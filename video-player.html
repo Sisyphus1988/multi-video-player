@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>本地多视频播放器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #fff;
+            min-height: 100vh;
+        }
+
+        .toolbar {
+            background: #16213e;
+            padding: 16px 24px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #0f3460;
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            background: #1a5276;
+        }
+
+        .btn-success {
+            background: #27ae60;
+            color: #fff;
+        }
+
+        .btn-success:hover {
+            background: #2ecc71;
+        }
+
+        .btn-warning {
+            background: #f39c12;
+            color: #fff;
+        }
+
+        .btn-warning:hover {
+            background: #f1c40f;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: #fff;
+        }
+
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .video-count {
+            margin-left: auto;
+            font-size: 14px;
+            opacity: 0.8;
+        }
+
+        .container {
+            padding: 24px;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 20px;
+        }
+
+        .video-card {
+            background: #16213e;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        }
+
+        .video-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .video-wrapper {
+            position: relative;
+            background: #000;
+            aspect-ratio: 16/9;
+        }
+
+        .video-wrapper video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .video-controls {
+            padding: 12px 16px;
+            background: #0f3460;
+        }
+
+        .video-name {
+            font-size: 14px;
+            margin-bottom: 10px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            opacity: 0.9;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #1a1a2e;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+
+        .progress-bar input[type="range"] {
+            width: 100%;
+            height: 100%;
+            -webkit-appearance: none;
+            appearance: none;
+            background: transparent;
+            cursor: pointer;
+        }
+
+        .progress-bar input[type="range"]::-webkit-slider-runnable-track {
+            height: 6px;
+            background: #1a1a2e;
+            border-radius: 3px;
+        }
+
+        .progress-bar input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #3498db;
+            border-radius: 50%;
+            margin-top: -4px;
+            cursor: pointer;
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .control-btn {
+            width: 36px;
+            height: 36px;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            transition: all 0.2s;
+        }
+
+        .play-btn {
+            background: #3498db;
+            color: #fff;
+        }
+
+        .play-btn:hover {
+            background: #2980b9;
+        }
+
+        .mute-btn {
+            background: #2c3e50;
+            color: #fff;
+        }
+
+        .mute-btn:hover {
+            background: #34495e;
+        }
+
+        .time-display {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-left: 8px;
+        }
+
+        .volume-control {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-left: auto;
+        }
+
+        .volume-control input[type="range"] {
+            width: 80px;
+            height: 4px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: transparent;
+            cursor: pointer;
+        }
+
+        .volume-control input[type="range"]::-webkit-slider-runnable-track {
+            height: 4px;
+            background: #1a1a2e;
+            border-radius: 2px;
+        }
+
+        .volume-control input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #3498db;
+            border-radius: 50%;
+            margin-top: -4px;
+            cursor: pointer;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 100px 20px;
+            opacity: 0.6;
+        }
+
+        .empty-state .icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+
+        .empty-state h2 {
+            margin-bottom: 10px;
+        }
+
+        .fullscreen-btn {
+            background: #7f8c8d;
+            color: #fff;
+        }
+
+        .fullscreen-btn:hover {
+            background: #95a5a6;
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <div class="file-input-wrapper">
+            <button class="btn btn-primary">📁 选择视频</button>
+            <input type="file" id="fileInput" multiple accept="video/*">
+        </div>
+        <button class="btn btn-success" id="playAllBtn">▶️ 全部播放</button>
+        <button class="btn btn-warning" id="pauseAllBtn">⏸️ 全部暂停</button>
+        <button class="btn btn-danger" id="muteAllBtn">🔇 全部静音</button>
+        <button class="btn btn-primary" id="unmuteAllBtn">🔊 取消静音</button>
+        <span class="video-count" id="videoCount">已选择 0 个视频</span>
+    </div>
+
+    <div class="container">
+        <div id="videoGrid" class="video-grid">
+            <div class="empty-state" id="emptyState">
+                <div class="icon">🎬</div>
+                <h2>本地多视频播放器</h2>
+                <p>点击上方"选择视频"按钮添加本地视频文件</p>
+                <p style="margin-top: 10px; font-size: 14px;">支持同时播放多个视频</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const videoGrid = document.getElementById('videoGrid');
+        const emptyState = document.getElementById('emptyState');
+        const videoCount = document.getElementById('videoCount');
+        const playAllBtn = document.getElementById('playAllBtn');
+        const pauseAllBtn = document.getElementById('pauseAllBtn');
+        const muteAllBtn = document.getElementById('muteAllBtn');
+        const unmuteAllBtn = document.getElementById('unmuteAllBtn');
+
+        let videos = [];
+
+        fileInput.addEventListener('change', function(e) {
+            const files = Array.from(e.target.files);
+            if (files.length === 0) return;
+
+            emptyState.style.display = 'none';
+            videoGrid.innerHTML = '';
+            videos = [];
+
+            files.forEach((file, index) => {
+                const videoCard = createVideoCard(file, index);
+                videoGrid.appendChild(videoCard);
+            });
+
+            updateVideoCount();
+        });
+
+        function createVideoCard(file, index) {
+            const card = document.createElement('div');
+            card.className = 'video-card';
+
+            const url = URL.createObjectURL(file);
+            const videoId = `video-${index}`;
+
+            card.innerHTML = `
+                <div class="video-wrapper">
+                    <video id="${videoId}" src="${url}"></video>
+                </div>
+                <div class="video-controls">
+                    <div class="video-name" title="${file.name}">${file.name}</div>
+                    <div class="progress-bar">
+                        <input type="range" min="0" max="100" value="0" id="progress-${index}">
+                    </div>
+                    <div class="control-buttons">
+                        <button class="control-btn play-btn" data-index="${index}">▶</button>
+                        <button class="control-btn mute-btn" data-index="${index}">🔊</button>
+                        <span class="time-display" id="time-${index}">0:00 / 0:00</span>
+                        <div class="volume-control">
+                            <span>🔈</span>
+                            <input type="range" min="0" max="100" value="100" id="volume-${index}">
+                            <span>🔊</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            const video = card.querySelector('video');
+            const playBtn = card.querySelector('.play-btn');
+            const muteBtn = card.querySelector('.mute-btn');
+            const progressBar = card.querySelector(`#progress-${index}`);
+            const volumeBar = card.querySelector(`#volume-${index}`);
+            const timeDisplay = card.querySelector(`#time-${index}`);
+
+            videos.push({
+                element: video,
+                playBtn: playBtn,
+                muteBtn: muteBtn,
+                isMuted: false
+            });
+
+            video.addEventListener('loadedmetadata', function() {
+                updateTimeDisplay(index);
+            });
+
+            video.addEventListener('timeupdate', function() {
+                const progress = (video.currentTime / video.duration) * 100;
+                progressBar.value = progress;
+                updateTimeDisplay(index);
+            });
+
+            video.addEventListener('ended', function() {
+                playBtn.textContent = '▶';
+            });
+
+            playBtn.addEventListener('click', function() {
+                togglePlay(index);
+            });
+
+            muteBtn.addEventListener('click', function() {
+                toggleMute(index);
+            });
+
+            progressBar.addEventListener('input', function() {
+                const time = (progressBar.value / 100) * video.duration;
+                video.currentTime = time;
+            });
+
+            volumeBar.addEventListener('input', function() {
+                video.volume = volumeBar.value / 100;
+                if (video.volume === 0) {
+                    video.muted = true;
+                    muteBtn.textContent = '🔇';
+                } else {
+                    video.muted = false;
+                    muteBtn.textContent = '🔊';
+                }
+            });
+
+            return card;
+        }
+
+        function togglePlay(index) {
+            const video = videos[index];
+            if (video.element.paused) {
+                video.element.play();
+                video.playBtn.textContent = '⏸';
+            } else {
+                video.element.pause();
+                video.playBtn.textContent = '▶';
+            }
+        }
+
+        function toggleMute(index) {
+            const video = videos[index];
+            video.element.muted = !video.element.muted;
+            video.isMuted = video.element.muted;
+            video.muteBtn.textContent = video.isMuted ? '🔇' : '🔊';
+        }
+
+        function updateTimeDisplay(index) {
+            const video = videos[index].element;
+            const timeDisplay = document.getElementById(`time-${index}`);
+            const current = formatTime(video.currentTime);
+            const total = formatTime(video.duration || 0);
+            timeDisplay.textContent = `${current} / ${total}`;
+        }
+
+        function formatTime(seconds) {
+            if (isNaN(seconds)) return '0:00';
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function updateVideoCount() {
+            videoCount.textContent = `已选择 ${videos.length} 个视频`;
+        }
+
+        playAllBtn.addEventListener('click', function() {
+            videos.forEach((video, index) => {
+                video.element.play();
+                video.playBtn.textContent = '⏸';
+            });
+        });
+
+        pauseAllBtn.addEventListener('click', function() {
+            videos.forEach((video, index) => {
+                video.element.pause();
+                video.playBtn.textContent = '▶';
+            });
+        });
+
+        muteAllBtn.addEventListener('click', function() {
+            videos.forEach((video, index) => {
+                video.element.muted = true;
+                video.isMuted = true;
+                video.muteBtn.textContent = '🔇';
+            });
+        });
+
+        unmuteAllBtn.addEventListener('click', function() {
+            videos.forEach((video, index) => {
+                video.element.muted = false;
+                video.isMuted = false;
+                video.muteBtn.textContent = '🔊';
+            });
+        });
+    </script>
+</body>
+</html>
