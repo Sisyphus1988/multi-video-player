@@ -77,6 +77,12 @@
             background: #c0392b;
         }
 
+        .btn:disabled,
+        .btn:disabled:hover {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
         .file-input-wrapper {
             position: relative;
         }
@@ -283,10 +289,11 @@
             <button class="btn btn-primary">📁 选择视频</button>
             <input type="file" id="fileInput" multiple accept="video/*">
         </div>
-        <button class="btn btn-success" id="playAllBtn">▶️ 全部播放</button>
-        <button class="btn btn-warning" id="pauseAllBtn">⏸️ 全部暂停</button>
-        <button class="btn btn-danger" id="muteAllBtn">🔇 全部静音</button>
-        <button class="btn btn-primary" id="unmuteAllBtn">🔊 取消静音</button>
+        <button class="btn btn-success" id="playAllBtn" disabled>▶️ 全部播放</button>
+        <button class="btn btn-warning" id="pauseAllBtn" disabled>⏸️ 全部暂停</button>
+        <button class="btn btn-danger" id="muteAllBtn" disabled>🔇 全部静音</button>
+        <button class="btn btn-primary" id="unmuteAllBtn" disabled>🔊 取消静音</button>
+        <button class="btn btn-primary" id="clearAllBtn" disabled>🗑️ 清空列表</button>
         <span class="video-count" id="videoCount">已选择 0 个视频</span>
     </div>
 
@@ -310,8 +317,10 @@
         const pauseAllBtn = document.getElementById('pauseAllBtn');
         const muteAllBtn = document.getElementById('muteAllBtn');
         const unmuteAllBtn = document.getElementById('unmuteAllBtn');
+        const clearAllBtn = document.getElementById('clearAllBtn');
 
         const ICONS = { play: '▶', pause: '⏸', muted: '🔇', unmuted: '🔊' };
+        const bulkActionButtons = [playAllBtn, pauseAllBtn, muteAllBtn, unmuteAllBtn, clearAllBtn];
         let videos = [];
 
         function escapeHtml(str) {
@@ -322,8 +331,23 @@
 
         function revokeAllUrls() {
             videos.forEach(v => {
+                v.element.pause();
                 if (v.url) URL.revokeObjectURL(v.url);
             });
+        }
+
+        function showEmptyState() {
+            emptyState.style.display = '';
+            videoGrid.replaceChildren(emptyState);
+        }
+
+        function clearVideos() {
+            revokeAllUrls();
+            videos = [];
+            fileInput.value = '';
+            updateVideoCount();
+            updateControlState();
+            showEmptyState();
         }
 
         fileInput.addEventListener('change', function(e) {
@@ -332,7 +356,7 @@
 
             revokeAllUrls();
             emptyState.style.display = 'none';
-            videoGrid.innerHTML = '';
+            videoGrid.replaceChildren();
             videos = [];
 
             files.forEach((file, index) => {
@@ -341,6 +365,7 @@
             });
 
             updateVideoCount();
+            updateControlState();
         });
 
         function createVideoCard(file, index) {
@@ -353,7 +378,7 @@
 
             card.innerHTML = `
                 <div class="video-wrapper">
-                    <video id="${videoId}" src="${url}"></video>
+                    <video id="${videoId}" src="${url}" preload="metadata"></video>
                 </div>
                 <div class="video-controls">
                     <div class="video-name" title="${safeName}">${safeName}</div>
@@ -468,6 +493,13 @@
             videoCount.textContent = `已选择 ${videos.length} 个视频`;
         }
 
+        function updateControlState() {
+            const hasVideos = videos.length > 0;
+            bulkActionButtons.forEach(btn => {
+                btn.disabled = !hasVideos;
+            });
+        }
+
         function applyToAll(action) {
             videos.forEach((_, i) => action(i));
         }
@@ -476,7 +508,9 @@
         pauseAllBtn.addEventListener('click', () => applyToAll(i => setPlaying(i, false)));
         muteAllBtn.addEventListener('click', () => applyToAll(i => setMuted(i, true)));
         unmuteAllBtn.addEventListener('click', () => applyToAll(i => setMuted(i, false)));
+        clearAllBtn.addEventListener('click', clearVideos);
 
+        updateControlState();
         window.addEventListener('beforeunload', revokeAllUrls);
     </script>
 </body>
