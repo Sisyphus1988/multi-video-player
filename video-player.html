@@ -286,8 +286,12 @@
 <body>
     <div class="toolbar">
         <div class="file-input-wrapper">
-            <button class="btn btn-primary" type="button">📁 选择视频</button>
+            <button class="btn btn-primary" type="button">📁 选择视频文件</button>
             <input type="file" id="fileInput" multiple accept="video/*" aria-label="选择本地视频文件">
+        </div>
+        <div class="file-input-wrapper">
+            <button class="btn btn-primary" type="button">📂 选择文件夹</button>
+            <input type="file" id="folderInput" multiple webkitdirectory directory accept="video/*" aria-label="选择包含视频的文件夹">
         </div>
         <button class="btn btn-success" id="playAllBtn" type="button" disabled>▶️ 全部播放</button>
         <button class="btn btn-warning" id="pauseAllBtn" type="button" disabled>⏸️ 全部暂停</button>
@@ -302,14 +306,15 @@
             <div class="empty-state" id="emptyState">
                 <div class="icon">🎬</div>
                 <h2>本地多视频播放器</h2>
-                <p>点击上方"选择视频"按钮添加本地视频文件</p>
-                <p style="margin-top: 10px; font-size: 14px;">支持同时播放多个视频</p>
+                <p>点击上方按钮添加本地视频文件或打开整个文件夹</p>
+                <p style="margin-top: 10px; font-size: 14px;">支持多选文件和自动过滤文件夹内视频</p>
             </div>
         </div>
     </div>
 
     <script>
         const fileInput = document.getElementById('fileInput');
+        const folderInput = document.getElementById('folderInput');
         const videoGrid = document.getElementById('videoGrid');
         const emptyState = document.getElementById('emptyState');
         const videoCount = document.getElementById('videoCount');
@@ -320,6 +325,7 @@
         const clearAllBtn = document.getElementById('clearAllBtn');
 
         const ICONS = { play: '▶', pause: '⏸', muted: '🔇', unmuted: '🔊' };
+        const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'ogv', 'ogg', 'mov', 'm4v', 'mkv', 'avi', 'wmv', 'flv', 'ts', 'm2ts', '3gp']);
         const bulkActionButtons = [playAllBtn, pauseAllBtn, muteAllBtn, unmuteAllBtn, clearAllBtn];
         let videos = [];
 
@@ -345,14 +351,44 @@
             revokeAllUrls();
             videos = [];
             fileInput.value = '';
+            folderInput.value = '';
             updateVideoCount();
             updateControlState();
             showEmptyState();
         }
 
-        fileInput.addEventListener('change', function(e) {
-            const files = Array.from(e.target.files);
-            if (files.length === 0) return;
+        function getDisplayName(file) {
+            return file.webkitRelativePath || file.name;
+        }
+
+        function isVideoFile(file) {
+            if (file.type && file.type.startsWith('video/')) return true;
+            const ext = file.name.split('.').pop().toLowerCase();
+            return VIDEO_EXTENSIONS.has(ext);
+        }
+
+        function sortFilesByName(files) {
+            return files.sort((a, b) => getDisplayName(a).localeCompare(getDisplayName(b), 'zh-CN', {
+                numeric: true,
+                sensitivity: 'base'
+            }));
+        }
+
+        function loadVideoFiles(fileList, sourceInput) {
+            const selectedFiles = Array.from(fileList);
+            if (selectedFiles.length === 0) return;
+
+            const files = sortFilesByName(selectedFiles.filter(isVideoFile));
+
+            if (sourceInput) {
+                sourceInput.value = '';
+            }
+
+            if (files.length === 0) {
+                clearVideos();
+                videoCount.textContent = '未找到可播放视频';
+                return;
+            }
 
             revokeAllUrls();
             emptyState.style.display = 'none';
@@ -366,6 +402,14 @@
 
             updateVideoCount();
             updateControlState();
+        }
+
+        fileInput.addEventListener('change', function(e) {
+            loadVideoFiles(e.target.files, fileInput);
+        });
+
+        folderInput.addEventListener('change', function(e) {
+            loadVideoFiles(e.target.files, folderInput);
         });
 
         function createVideoCard(file, index) {
@@ -373,7 +417,8 @@
             card.className = 'video-card';
 
             const url = URL.createObjectURL(file);
-            const safeName = escapeHtml(file.name);
+            const displayName = getDisplayName(file);
+            const safeName = escapeHtml(displayName);
             const videoId = `video-${index}`;
 
             card.innerHTML = `
@@ -411,7 +456,7 @@
                 muteBtn,
                 volumeBar,
                 timeDisplay,
-                name: file.name,
+                name: displayName,
                 url
             });
 
@@ -419,7 +464,7 @@
 
             video.addEventListener('error', function() {
                 const name = card.querySelector('.video-name');
-                name.textContent = `⚠ 无法播放: ${file.name}`;
+                name.textContent = `⚠ 无法播放: ${displayName}`;
                 name.style.color = '#e74c3c';
             });
 
