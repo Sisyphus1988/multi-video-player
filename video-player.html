@@ -18,6 +18,32 @@
             min-height: 100vh;
         }
 
+        .drop-overlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(10, 16, 35, 0.78);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s;
+            z-index: 200;
+        }
+
+        body.is-dragging .drop-overlay {
+            opacity: 1;
+        }
+
+        .drop-message {
+            padding: 22px 28px;
+            border: 1px dashed rgba(255, 255, 255, 0.65);
+            border-radius: 8px;
+            background: #16213e;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
         .toolbar {
             background: #16213e;
             padding: 16px 24px;
@@ -284,6 +310,10 @@
     </style>
 </head>
 <body>
+    <div class="drop-overlay" aria-hidden="true">
+        <div class="drop-message">拖入视频文件或文件夹</div>
+    </div>
+
     <div class="toolbar">
         <div class="file-input-wrapper">
             <button class="btn btn-primary" type="button">📁 选择视频文件</button>
@@ -307,7 +337,7 @@
                 <div class="icon">🎬</div>
                 <h2>本地多视频播放器</h2>
                 <p>点击上方按钮添加本地视频文件或打开整个文件夹</p>
-                <p style="margin-top: 10px; font-size: 14px;">支持多选文件和自动过滤文件夹内视频</p>
+                <p style="margin-top: 10px; font-size: 14px;">支持多选文件、文件夹导入和直接拖拽</p>
             </div>
         </div>
     </div>
@@ -328,6 +358,7 @@
         const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'ogv', 'ogg', 'mov', 'm4v', 'mkv', 'avi', 'wmv', 'flv', 'ts', 'm2ts', '3gp']);
         const bulkActionButtons = [playAllBtn, pauseAllBtn, muteAllBtn, unmuteAllBtn, clearAllBtn];
         let videos = [];
+        let dragDepth = 0;
 
         function escapeHtml(str) {
             const div = document.createElement('div');
@@ -358,7 +389,7 @@
         }
 
         function getDisplayName(file) {
-            return file.webkitRelativePath || file.name;
+            return file.displayPath || file.webkitRelativePath || file.name;
         }
 
         function isVideoFile(file) {
@@ -411,6 +442,94 @@
         folderInput.addEventListener('change', function(e) {
             loadVideoFiles(e.target.files, folderInput);
         });
+
+        function isFileDrag(e) {
+            const types = e.dataTransfer ? Array.from(e.dataTransfer.types || []) : [];
+            return types.includes('Files');
+        }
+
+        function hideDragOverlay() {
+            dragDepth = 0;
+            document.body.classList.remove('is-dragging');
+        }
+
+        function setDisplayPath(file, displayPath) {
+            if (!displayPath) return file;
+
+            try {
+                Object.defineProperty(file, 'displayPath', {
+                    value: displayPath,
+                    configurable: true
+                });
+            } catch (err) {
+                file.displayPath = displayPath;
+            }
+
+            return file;
+        }
+
+        function readDirectoryEntries(reader) {
+            return new Promise(resolve => {
+                const entries = [];
+
+                function readBatch() {
+                    reader.readEntries(batch => {
+                        if (batch.length === 0) {
+                            resolve(entries);
+                            return;
+                        }
+
+                        entries.push(...batch);
+                        readBatch();
+                    }, () => resolve(entries));
+                }
+
+                readBatch();
+            });
+        }
+
+        function readFileEntry(entry, parentPath) {
+            return new Promise(resolve => {
+                entry.file(file => {
+                    const displayPath = parentPath ? `${parentPath}/${file.name}` : file.name;
+                    resolve(setDisplayPath(file, displayPath));
+                }, () => resolve(null));
+            });
+        }
+
+        async function readDroppedEntry(entry, parentPath = '') {
+            if (entry.isFile) {
+                return readFileEntry(entry, parentPath);
+            }
+
+            if (entry.isDirectory) {
+                const directoryPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
+                const entries = await readDirectoryEntries(entry.createReader());
+                const nestedFiles = await Promise.all(entries.map(child => readDroppedEntry(child, directoryPath)));
+                return nestedFiles.flat().filter(Boolean);
+            }
+
+            return [];
+        }
+
+        async function getDroppedFiles(dataTransfer) {
+            const items = Array.from(dataTransfer.items || []);
+
+            if (items.length === 0) {
+                return Array.from(dataTransfer.files || []);
+            }
+
+            const entries = items
+                .map(item => typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry() : null)
+                .filter(Boolean);
+
+            if (entries.length === 0) {
+                return Array.from(dataTransfer.files || []);
+            }
+
+            const files = await Promise.all(entries.map(entry => readDroppedEntry(entry)));
+            return files.flat().filter(Boolean);
+        }
 
         function createVideoCard(file, index) {
             const card = document.createElement('div');
@@ -575,6 +694,36 @@
         muteAllBtn.addEventListener('click', () => applyToAll(i => setMuted(i, true)));
         unmuteAllBtn.addEventListener('click', () => applyToAll(i => setMuted(i, false)));
         clearAllBtn.addEventListener('click', clearVideos);
+
+        window.addEventListener('dragenter', function(e) {
+            if (!isFileDrag(e)) return;
+            e.preventDefault();
+            dragDepth += 1;
+            document.body.classList.add('is-dragging');
+        });
+
+        window.addEventListener('dragover', function(e) {
+            if (!isFileDrag(e)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+        });
+
+        window.addEventListener('dragleave', function(e) {
+            if (!isFileDrag(e)) return;
+            dragDepth = Math.max(0, dragDepth - 1);
+            if (dragDepth === 0) {
+                hideDragOverlay();
+            }
+        });
+
+        window.addEventListener('drop', async function(e) {
+            if (!isFileDrag(e)) return;
+            e.preventDefault();
+            hideDragOverlay();
+
+            const files = await getDroppedFiles(e.dataTransfer);
+            loadVideoFiles(files);
+        });
 
         updateControlState();
         window.addEventListener('beforeunload', revokeAllUrls);
