@@ -286,15 +286,15 @@
 <body>
     <div class="toolbar">
         <div class="file-input-wrapper">
-            <button class="btn btn-primary">📁 选择视频</button>
-            <input type="file" id="fileInput" multiple accept="video/*">
+            <button class="btn btn-primary" type="button">📁 选择视频</button>
+            <input type="file" id="fileInput" multiple accept="video/*" aria-label="选择本地视频文件">
         </div>
-        <button class="btn btn-success" id="playAllBtn" disabled>▶️ 全部播放</button>
-        <button class="btn btn-warning" id="pauseAllBtn" disabled>⏸️ 全部暂停</button>
-        <button class="btn btn-danger" id="muteAllBtn" disabled>🔇 全部静音</button>
-        <button class="btn btn-primary" id="unmuteAllBtn" disabled>🔊 取消静音</button>
-        <button class="btn btn-primary" id="clearAllBtn" disabled>🗑️ 清空列表</button>
-        <span class="video-count" id="videoCount">已选择 0 个视频</span>
+        <button class="btn btn-success" id="playAllBtn" type="button" disabled>▶️ 全部播放</button>
+        <button class="btn btn-warning" id="pauseAllBtn" type="button" disabled>⏸️ 全部暂停</button>
+        <button class="btn btn-danger" id="muteAllBtn" type="button" disabled>🔇 全部静音</button>
+        <button class="btn btn-primary" id="unmuteAllBtn" type="button" disabled>🔊 取消静音</button>
+        <button class="btn btn-primary" id="clearAllBtn" type="button" disabled>🗑️ 清空列表</button>
+        <span class="video-count" id="videoCount" aria-live="polite">已选择 0 个视频</span>
     </div>
 
     <div class="container">
@@ -383,15 +383,15 @@
                 <div class="video-controls">
                     <div class="video-name" title="${safeName}">${safeName}</div>
                     <div class="progress-bar">
-                        <input type="range" min="0" max="100" value="0" id="progress-${index}">
+                        <input type="range" min="0" max="100" value="0" id="progress-${index}" aria-label="播放进度：${safeName}">
                     </div>
                     <div class="control-buttons">
-                        <button class="control-btn play-btn" data-index="${index}">${ICONS.play}</button>
-                        <button class="control-btn mute-btn" data-index="${index}">${ICONS.unmuted}</button>
+                        <button type="button" class="control-btn play-btn" data-index="${index}" aria-label="播放 ${safeName}" title="播放">${ICONS.play}</button>
+                        <button type="button" class="control-btn mute-btn" data-index="${index}" aria-label="静音 ${safeName}" title="静音">${ICONS.unmuted}</button>
                         <span class="time-display" id="time-${index}">0:00 / 0:00</span>
                         <div class="volume-control">
                             <span>🔈</span>
-                            <input type="range" min="0" max="100" value="100" id="volume-${index}">
+                            <input type="range" min="0" max="100" value="100" id="volume-${index}" aria-label="音量：${safeName}">
                             <span>🔊</span>
                         </div>
                     </div>
@@ -409,7 +409,9 @@
                 element: video,
                 playBtn,
                 muteBtn,
+                volumeBar,
                 timeDisplay,
+                name: file.name,
                 url
             });
 
@@ -427,7 +429,7 @@
                 updateTimeDisplay(index);
             });
 
-            video.addEventListener('ended', () => playBtn.textContent = ICONS.play);
+            video.addEventListener('ended', () => updatePlayButton(videos[index], false));
 
             playBtn.addEventListener('click', () => togglePlay(index));
             muteBtn.addEventListener('click', () => toggleMute(index));
@@ -448,23 +450,42 @@
 
         function setMuted(index, muted) {
             const v = videos[index];
+            if (!muted && v.element.volume === 0) {
+                v.element.volume = 1;
+                v.volumeBar.value = 100;
+            }
             v.element.muted = muted;
+            updateMuteButton(v);
+        }
+
+        function updateMuteButton(v) {
+            const muted = v.element.muted || v.element.volume === 0;
+            const label = muted ? `取消静音 ${v.name}` : `静音 ${v.name}`;
             v.muteBtn.textContent = muted ? ICONS.muted : ICONS.unmuted;
+            v.muteBtn.setAttribute('aria-label', label);
+            v.muteBtn.title = muted ? '取消静音' : '静音';
+        }
+
+        function updatePlayButton(v, playing) {
+            const label = playing ? `暂停 ${v.name}` : `播放 ${v.name}`;
+            v.playBtn.textContent = playing ? ICONS.pause : ICONS.play;
+            v.playBtn.setAttribute('aria-label', label);
+            v.playBtn.title = playing ? '暂停' : '播放';
         }
 
         function setPlaying(index, playing) {
             const v = videos[index];
             if (playing) {
                 const action = v.element.play();
-                v.playBtn.textContent = ICONS.pause;
+                updatePlayButton(v, true);
                 if (action) action.catch(() => {
-                    v.playBtn.textContent = ICONS.play;
+                    updatePlayButton(v, false);
                 });
                 return;
             }
 
             v.element.pause();
-            v.playBtn.textContent = ICONS.play;
+            updatePlayButton(v, false);
         }
 
         function togglePlay(index) {
