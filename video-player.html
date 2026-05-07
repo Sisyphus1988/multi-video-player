@@ -83,10 +83,13 @@
 
         .file-input-wrapper input[type="file"] {
             position: absolute;
+            top: 0;
+            left: 0;
             opacity: 0;
             width: 100%;
             height: 100%;
             cursor: pointer;
+            z-index: 1;
         }
 
         .video-count {
@@ -272,14 +275,6 @@
             margin-bottom: 10px;
         }
 
-        .fullscreen-btn {
-            background: #7f8c8d;
-            color: #fff;
-        }
-
-        .fullscreen-btn:hover {
-            background: #95a5a6;
-        }
     </style>
 </head>
 <body>
@@ -316,12 +311,26 @@
         const muteAllBtn = document.getElementById('muteAllBtn');
         const unmuteAllBtn = document.getElementById('unmuteAllBtn');
 
+        const ICONS = { play: '▶', pause: '⏸', muted: '🔇', unmuted: '🔊' };
         let videos = [];
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function revokeAllUrls() {
+            videos.forEach(v => {
+                if (v.url) URL.revokeObjectURL(v.url);
+            });
+        }
 
         fileInput.addEventListener('change', function(e) {
             const files = Array.from(e.target.files);
             if (files.length === 0) return;
 
+            revokeAllUrls();
             emptyState.style.display = 'none';
             videoGrid.innerHTML = '';
             videos = [];
@@ -339,6 +348,7 @@
             card.className = 'video-card';
 
             const url = URL.createObjectURL(file);
+            const safeName = escapeHtml(file.name);
             const videoId = `video-${index}`;
 
             card.innerHTML = `
@@ -346,13 +356,13 @@
                     <video id="${videoId}" src="${url}"></video>
                 </div>
                 <div class="video-controls">
-                    <div class="video-name" title="${file.name}">${file.name}</div>
+                    <div class="video-name" title="${safeName}">${safeName}</div>
                     <div class="progress-bar">
                         <input type="range" min="0" max="100" value="0" id="progress-${index}">
                     </div>
                     <div class="control-buttons">
-                        <button class="control-btn play-btn" data-index="${index}">▶</button>
-                        <button class="control-btn mute-btn" data-index="${index}">🔊</button>
+                        <button class="control-btn play-btn" data-index="${index}">${ICONS.play}</button>
+                        <button class="control-btn mute-btn" data-index="${index}">${ICONS.unmuted}</button>
                         <span class="time-display" id="time-${index}">0:00 / 0:00</span>
                         <div class="volume-control">
                             <span>🔈</span>
@@ -372,76 +382,79 @@
 
             videos.push({
                 element: video,
-                playBtn: playBtn,
-                muteBtn: muteBtn,
-                isMuted: false
+                playBtn,
+                muteBtn,
+                timeDisplay,
+                url
             });
 
-            video.addEventListener('loadedmetadata', function() {
-                updateTimeDisplay(index);
+            video.addEventListener('loadedmetadata', () => updateTimeDisplay(index));
+
+            video.addEventListener('error', function() {
+                const name = card.querySelector('.video-name');
+                name.textContent = `⚠ 无法播放: ${file.name}`;
+                name.style.color = '#e74c3c';
             });
 
             video.addEventListener('timeupdate', function() {
-                const progress = (video.currentTime / video.duration) * 100;
+                const progress = video.duration ? (video.currentTime / video.duration) * 100 : 0;
                 progressBar.value = progress;
                 updateTimeDisplay(index);
             });
 
-            video.addEventListener('ended', function() {
-                playBtn.textContent = '▶';
-            });
+            video.addEventListener('ended', () => playBtn.textContent = ICONS.play);
 
-            playBtn.addEventListener('click', function() {
-                togglePlay(index);
-            });
-
-            muteBtn.addEventListener('click', function() {
-                toggleMute(index);
-            });
+            playBtn.addEventListener('click', () => togglePlay(index));
+            muteBtn.addEventListener('click', () => toggleMute(index));
 
             progressBar.addEventListener('input', function() {
-                const time = (progressBar.value / 100) * video.duration;
-                video.currentTime = time;
+                if (video.duration) {
+                    video.currentTime = (progressBar.value / 100) * video.duration;
+                }
             });
 
             volumeBar.addEventListener('input', function() {
                 video.volume = volumeBar.value / 100;
-                if (video.volume === 0) {
-                    video.muted = true;
-                    muteBtn.textContent = '🔇';
-                } else {
-                    video.muted = false;
-                    muteBtn.textContent = '🔊';
-                }
+                setMuted(index, video.volume === 0);
             });
 
             return card;
         }
 
-        function togglePlay(index) {
-            const video = videos[index];
-            if (video.element.paused) {
-                video.element.play();
-                video.playBtn.textContent = '⏸';
-            } else {
-                video.element.pause();
-                video.playBtn.textContent = '▶';
+        function setMuted(index, muted) {
+            const v = videos[index];
+            v.element.muted = muted;
+            v.muteBtn.textContent = muted ? ICONS.muted : ICONS.unmuted;
+        }
+
+        function setPlaying(index, playing) {
+            const v = videos[index];
+            if (playing) {
+                const action = v.element.play();
+                v.playBtn.textContent = ICONS.pause;
+                if (action) action.catch(() => {
+                    v.playBtn.textContent = ICONS.play;
+                });
+                return;
             }
+
+            v.element.pause();
+            v.playBtn.textContent = ICONS.play;
+        }
+
+        function togglePlay(index) {
+            setPlaying(index, videos[index].element.paused);
         }
 
         function toggleMute(index) {
-            const video = videos[index];
-            video.element.muted = !video.element.muted;
-            video.isMuted = video.element.muted;
-            video.muteBtn.textContent = video.isMuted ? '🔇' : '🔊';
+            setMuted(index, !videos[index].element.muted);
         }
 
         function updateTimeDisplay(index) {
-            const video = videos[index].element;
-            const timeDisplay = document.getElementById(`time-${index}`);
-            const current = formatTime(video.currentTime);
-            const total = formatTime(video.duration || 0);
-            timeDisplay.textContent = `${current} / ${total}`;
+            const v = videos[index];
+            const current = formatTime(v.element.currentTime);
+            const total = formatTime(v.element.duration || 0);
+            v.timeDisplay.textContent = `${current} / ${total}`;
         }
 
         function formatTime(seconds) {
@@ -455,35 +468,16 @@
             videoCount.textContent = `已选择 ${videos.length} 个视频`;
         }
 
-        playAllBtn.addEventListener('click', function() {
-            videos.forEach((video, index) => {
-                video.element.play();
-                video.playBtn.textContent = '⏸';
-            });
-        });
+        function applyToAll(action) {
+            videos.forEach((_, i) => action(i));
+        }
 
-        pauseAllBtn.addEventListener('click', function() {
-            videos.forEach((video, index) => {
-                video.element.pause();
-                video.playBtn.textContent = '▶';
-            });
-        });
+        playAllBtn.addEventListener('click', () => applyToAll(i => setPlaying(i, true)));
+        pauseAllBtn.addEventListener('click', () => applyToAll(i => setPlaying(i, false)));
+        muteAllBtn.addEventListener('click', () => applyToAll(i => setMuted(i, true)));
+        unmuteAllBtn.addEventListener('click', () => applyToAll(i => setMuted(i, false)));
 
-        muteAllBtn.addEventListener('click', function() {
-            videos.forEach((video, index) => {
-                video.element.muted = true;
-                video.isMuted = true;
-                video.muteBtn.textContent = '🔇';
-            });
-        });
-
-        unmuteAllBtn.addEventListener('click', function() {
-            videos.forEach((video, index) => {
-                video.element.muted = false;
-                video.isMuted = false;
-                video.muteBtn.textContent = '🔊';
-            });
-        });
+        window.addEventListener('beforeunload', revokeAllUrls);
     </script>
 </body>
 </html>
