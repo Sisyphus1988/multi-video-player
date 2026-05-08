@@ -175,9 +175,11 @@
         .video-name {
             font-size: 14px;
             margin-bottom: 10px;
-            white-space: nowrap;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
             overflow: hidden;
-            text-overflow: ellipsis;
+            word-break: break-all;
             opacity: 0.9;
         }
 
@@ -188,6 +190,11 @@
             border-radius: 3px;
             cursor: pointer;
             margin-bottom: 10px;
+            transition: height 0.15s;
+        }
+
+        .progress-bar:hover {
+            height: 8px;
         }
 
         .progress-bar input[type="range"] {
@@ -207,6 +214,26 @@
             border-radius: 50%;
             margin-top: -4px;
             cursor: pointer;
+        }
+
+        .progress-bar input[type="range"]::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            background: #3498db;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+        }
+
+        .progress-bar:hover input[type="range"]::-webkit-slider-thumb {
+            width: 16px;
+            height: 16px;
+            margin-top: -5px;
+        }
+
+        .progress-bar:hover input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
         }
 
         .control-buttons {
@@ -277,6 +304,13 @@
             border-radius: 2px;
         }
 
+        .volume-control input[type="range"]::-moz-range-track {
+            height: 4px;
+            background: #1a1a2e;
+            border-radius: 2px;
+            border: none;
+        }
+
         .volume-control input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
             width: 12px;
@@ -284,6 +318,15 @@
             background: #3498db;
             border-radius: 50%;
             margin-top: -4px;
+            cursor: pointer;
+        }
+
+        .volume-control input[type="range"]::-moz-range-thumb {
+            width: 12px;
+            height: 12px;
+            background: #3498db;
+            border-radius: 50%;
+            border: none;
             cursor: pointer;
         }
 
@@ -347,6 +390,13 @@
             border-radius: 2px;
         }
 
+        .speed-control input[type="range"]::-moz-range-track {
+            height: 4px;
+            background: #1a1a2e;
+            border-radius: 2px;
+            border: none;
+        }
+
         .speed-control input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
             width: 10px;
@@ -354,6 +404,15 @@
             background: #f39c12;
             border-radius: 50%;
             margin-top: -3px;
+            cursor: pointer;
+        }
+
+        .speed-control input[type="range"]::-moz-range-thumb {
+            width: 10px;
+            height: 10px;
+            background: #f39c12;
+            border-radius: 50%;
+            border: none;
             cursor: pointer;
         }
 
@@ -368,18 +427,8 @@
 
         .progress-bar input[type="range"]::-webkit-slider-runnable-track {
             height: 6px;
-            background: linear-gradient(to right, #3498db var(--buffered, 0%), #1a1a2e var(--buffered, 0%));
+            background: transparent;
             border-radius: 3px;
-        }
-
-        .progress-bar:hover input[type="range"]::-webkit-slider-runnable-track {
-            height: 8px;
-        }
-
-        .progress-bar:hover input[type="range"]::-webkit-slider-thumb {
-            width: 16px;
-            height: 16px;
-            margin-top: -4px;
         }
 
     </style>
@@ -438,9 +487,7 @@
         let dragDepth = 0;
 
         function escapeHtml(str) {
-            const div = document.createElement('div');
-            div.textContent = str;
-            return div.innerHTML;
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
         function revokeAllUrls() {
@@ -499,36 +546,38 @@
                 return;
             }
 
+            const startIndex = videos.length;
+            const wasEmpty = videos.length === 0;
+
             files.forEach(file => {
                 const url = URL.createObjectURL(file);
-                const displayName = getDisplayName(file);
                 videos.push({
-                    element: null,
-                    playBtn: null,
-                    muteBtn: null,
-                    volumeBar: null,
-                    timeDisplay: null,
-                    speedDisplay: null,
-                    pipBtn: null,
-                    name: displayName,
-                    url,
-                    file,
-                    speed: 1
+                    element: null, playBtn: null, muteBtn: null, deleteBtn: null,
+                    pipBtn: null, volumeBar: null, timeDisplay: null,
+                    speedDisplay: null, speedBar: null,
+                    name: getDisplayName(file), url, file, speed: 1
                 });
             });
 
-            renderAllCards();
+            if (wasEmpty) emptyState.style.display = 'none';
+
+            files.forEach((file, i) => {
+                const index = startIndex + i;
+                const card = createVideoCard(file, index, videos[index].url);
+                videoGrid.appendChild(card);
+            });
+
+            updateControlState();
+            videoCount.textContent = `已选择 ${videos.length} 个视频（+${files.length} 新增）`;
         }
 
         function renderAllCards() {
             emptyState.style.display = 'none';
             videoGrid.replaceChildren();
-
             videos.forEach((v, index) => {
                 const card = createVideoCard(v.file || v, index, v.url);
                 videoGrid.appendChild(card);
             });
-
             updateVideoCount();
             updateControlState();
         }
@@ -632,6 +681,7 @@
         function createVideoCard(file, index, url) {
             const card = document.createElement('div');
             card.className = 'video-card';
+            card.dataset.index = index;
 
             url = url || URL.createObjectURL(file);
             const displayName = getDisplayName(file);
@@ -667,27 +717,20 @@
             `;
 
             const video = card.querySelector('video');
-            const playBtn = card.querySelector('.play-btn');
-            const muteBtn = card.querySelector('.mute-btn');
-            const deleteBtn = card.querySelector('.delete-btn');
-            const pipBtn = card.querySelector('.pip-btn');
             const progressBar = card.querySelector(`#progress-${index}`);
             const volumeBar = card.querySelector(`#volume-${index}`);
-            const timeDisplay = card.querySelector(`#time-${index}`);
-            const speedDisplay = card.querySelector(`#speed-${index}`);
             const speedBar = card.querySelector(`#speedBar-${index}`);
-            const videoWrapper = card.querySelector('.video-wrapper');
 
             const prevSpeed = videos[index] ? videos[index].speed : 1;
             videos[index] = {
                 element: video,
-                playBtn,
-                muteBtn,
-                deleteBtn,
-                pipBtn,
+                playBtn: card.querySelector('.play-btn'),
+                muteBtn: card.querySelector('.mute-btn'),
+                deleteBtn: card.querySelector('.delete-btn'),
+                pipBtn: card.querySelector('.pip-btn'),
                 volumeBar,
-                timeDisplay,
-                speedDisplay,
+                timeDisplay: card.querySelector(`#time-${index}`),
+                speedDisplay: card.querySelector(`#speed-${index}`),
                 speedBar,
                 name: displayName,
                 url,
@@ -697,94 +740,127 @@
 
             video.playbackRate = prevSpeed;
             speedBar.value = prevSpeed * 100;
-            speedDisplay.textContent = prevSpeed + 'x';
+            videos[index].speedDisplay.textContent = prevSpeed + 'x';
 
             video.addEventListener('loadedmetadata', () => updateTimeDisplay(index));
-
             video.addEventListener('error', function() {
                 const name = card.querySelector('.video-name');
                 name.textContent = `⚠ 无法播放: ${displayName}`;
                 name.style.color = '#e74c3c';
             });
-
             video.addEventListener('timeupdate', function() {
-                const progress = video.duration ? (video.currentTime / video.duration) * 100 : 0;
-                progressBar.value = progress;
+                progressBar.value = video.duration ? (video.currentTime / video.duration) * 100 : 0;
                 updateTimeDisplay(index);
             });
-
             video.addEventListener('progress', function() {
-                if (video.buffered.length > 0 && video.duration) {
-                    const buffered = (video.buffered.end(video.buffered.length - 1) / video.duration) * 100;
-                    progressBar.style.setProperty('--buffered', buffered + '%');
-                }
+                updateProgressBar(progressBar, video);
             });
-
             video.addEventListener('ended', function() {
-                if (!video.loop) {
-                    updatePlayButton(videos[index], false);
-                }
-            });
-
-            playBtn.addEventListener('click', () => togglePlay(index));
-            muteBtn.addEventListener('click', () => toggleMute(index));
-            deleteBtn.addEventListener('click', () => removeVideo(index));
-
-            pipBtn.addEventListener('click', async () => {
-                try {
-                    if (document.pictureInPictureElement) {
-                        await document.exitPictureInPicture();
-                    } else {
-                        await video.requestPictureInPicture();
-                    }
-                } catch (err) {
-                    console.warn('画中画不可用:', err);
-                }
-            });
-
-            let clickTimer = null;
-            videoWrapper.addEventListener('click', function(e) {
-                if (e.target === video) {
-                    if (clickTimer) {
-                        clearTimeout(clickTimer);
-                        clickTimer = null;
-                        toggleFullscreen(video);
-                    } else {
-                        clickTimer = setTimeout(() => {
-                            clickTimer = null;
-                            togglePlay(index);
-                        }, 250);
-                    }
-                }
+                if (!video.loop) updatePlayButton(videos[index], false);
             });
 
             progressBar.addEventListener('input', function() {
-                if (video.duration) {
-                    video.currentTime = (progressBar.value / 100) * video.duration;
-                }
+                if (video.duration) video.currentTime = (progressBar.value / 100) * video.duration;
             });
-
             volumeBar.addEventListener('input', function() {
                 video.volume = volumeBar.value / 100;
                 setMuted(index, video.volume === 0);
             });
-
             speedBar.addEventListener('input', function() {
                 const speed = speedBar.value / 100;
                 video.playbackRate = speed;
                 videos[index].speed = speed;
-                speedDisplay.textContent = speed.toFixed(2).replace(/\.?0+$/, '') + 'x';
+                videos[index].speedDisplay.textContent = speed.toFixed(2).replace(/\.?0+$/, '') + 'x';
             });
 
             return card;
+        }
+
+        function updateProgressBar(progressBar, video) {
+            if (!video.duration) return;
+            const played = (video.currentTime / video.duration) * 100;
+            let buffered = 0;
+            if (video.buffered.length > 0) {
+                buffered = (video.buffered.end(video.buffered.length - 1) / video.duration) * 100;
+            }
+            progressBar.parentElement.style.background = `linear-gradient(to right, #3498db ${played}%, #3a6fa5 ${played}%, #3a6fa5 ${buffered}%, #1a1a2e ${buffered}%)`;
+        }
+
+        function reIndexCards() {
+            const cards = videoGrid.querySelectorAll('.video-card');
+            cards.forEach((card, i) => {
+                card.dataset.index = i;
+                const video = card.querySelector('video');
+                const btns = card.querySelectorAll('[data-index]');
+                btns.forEach(b => b.dataset.index = i);
+
+                video.removeEventListener('loadedmetadata', video._onMeta);
+                video.removeEventListener('error', video._onErr);
+                video.removeEventListener('timeupdate', video._onTime);
+                video.removeEventListener('progress', video._onProg);
+                video.removeEventListener('ended', video._onEnd);
+
+                const progressBar = card.querySelector(`[id^="progress-"]`);
+                const volumeBar = card.querySelector(`[id^="volume-"]`);
+                const speedBar = card.querySelector(`[id^="speedBar-"]`);
+
+                video._onMeta = () => updateTimeDisplay(i);
+                video._onErr = () => {
+                    const name = card.querySelector('.video-name');
+                    name.textContent = `⚠ 无法播放: ${videos[i].name}`;
+                    name.style.color = '#e74c3c';
+                };
+                video._onTime = () => {
+                    progressBar.value = video.duration ? (video.currentTime / video.duration) * 100 : 0;
+                    updateTimeDisplay(i);
+                };
+                video._onProg = () => updateProgressBar(progressBar, video);
+                video._onEnd = () => { if (!video.loop) updatePlayButton(videos[i], false); };
+
+                video.addEventListener('loadedmetadata', video._onMeta);
+                video.addEventListener('error', video._onErr);
+                video.addEventListener('timeupdate', video._onTime);
+                video.addEventListener('progress', video._onProg);
+                video.addEventListener('ended', video._onEnd);
+
+                const newProgress = progressBar.cloneNode(true);
+                progressBar.replaceWith(newProgress);
+                newProgress.addEventListener('input', () => {
+                    if (video.duration) video.currentTime = (newProgress.value / 100) * video.duration;
+                });
+
+                const newVolume = volumeBar.cloneNode(true);
+                volumeBar.replaceWith(newVolume);
+                newVolume.addEventListener('input', () => {
+                    video.volume = newVolume.value / 100;
+                    setMuted(i, video.volume === 0);
+                });
+
+                const newSpeed = speedBar.cloneNode(true);
+                speedBar.replaceWith(newSpeed);
+                newSpeed.addEventListener('input', () => {
+                    const speed = newSpeed.value / 100;
+                    video.playbackRate = speed;
+                    videos[i].speed = speed;
+                    videos[i].speedDisplay.textContent = speed.toFixed(2).replace(/\.?0+$/, '') + 'x';
+                });
+            });
         }
 
         function removeVideo(index) {
             const v = videos[index];
             v.element.pause();
             if (v.url) URL.revokeObjectURL(v.url);
+            const card = videoGrid.children[index];
+            if (card) card.remove();
             videos.splice(index, 1);
-            renderAllCards();
+            if (videos.length === 0) {
+                showEmptyState();
+            } else {
+                reIndexCards();
+            }
+            updateVideoCount();
+            updateControlState();
         }
 
         function toggleFullscreen(video) {
@@ -860,9 +936,11 @@
 
         function formatTime(seconds) {
             if (isNaN(seconds)) return '0:00';
-            const mins = Math.floor(seconds / 60);
-            const secs = Math.floor(seconds % 60);
-            return `${mins}:${secs.toString().padStart(2, '0')}`;
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+            if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            return `${m}:${s.toString().padStart(2, '0')}`;
         }
 
         function updateVideoCount() {
@@ -886,6 +964,40 @@
         unmuteAllBtn.addEventListener('click', () => applyToAll(i => setMuted(i, false)));
         clearAllBtn.addEventListener('click', clearVideos);
         loopBtn.addEventListener('click', toggleLoop);
+
+        let clickTimer = null;
+        videoGrid.addEventListener('click', function(e) {
+            const btn = e.target.closest('[data-index]');
+            if (!btn) return;
+            const index = parseInt(btn.dataset.index);
+            if (isNaN(index)) return;
+
+            if (e.target.closest('.play-btn')) { togglePlay(index); return; }
+            if (e.target.closest('.mute-btn')) { toggleMute(index); return; }
+            if (e.target.closest('.delete-btn')) { removeVideo(index); return; }
+            if (e.target.closest('.pip-btn')) {
+                const v = videos[index];
+                if (!v) return;
+                if (document.pictureInPictureElement) {
+                    document.exitPictureInPicture().catch(() => {});
+                } else {
+                    v.element.requestPictureInPicture().catch(() => {});
+                }
+                return;
+            }
+            if (e.target.closest('.video-wrapper') && e.target.tagName === 'VIDEO') {
+                if (clickTimer) {
+                    clearTimeout(clickTimer);
+                    clickTimer = null;
+                    toggleFullscreen(videos[index].element);
+                } else {
+                    clickTimer = setTimeout(() => {
+                        clickTimer = null;
+                        togglePlay(index);
+                    }, 250);
+                }
+            }
+        });
 
         window.addEventListener('dragenter', function(e) {
             if (!isFileDrag(e)) return;
