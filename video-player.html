@@ -487,7 +487,7 @@
         let dragDepth = 0;
 
         function escapeHtml(str) {
-            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
         function revokeAllUrls() {
@@ -555,31 +555,21 @@
                     element: null, playBtn: null, muteBtn: null, deleteBtn: null,
                     pipBtn: null, volumeBar: null, timeDisplay: null,
                     speedDisplay: null, speedBar: null,
-                    name: getDisplayName(file), url, file, speed: 1
+                    name: getDisplayName(file), url, file, speed: 1, lastVolume: 1
                 });
             });
 
             if (wasEmpty) emptyState.style.display = 'none';
 
+            const fragment = document.createDocumentFragment();
             files.forEach((file, i) => {
                 const index = startIndex + i;
-                const card = createVideoCard(file, index, videos[index].url);
-                videoGrid.appendChild(card);
+                fragment.appendChild(createVideoCard(file, index, videos[index].url));
             });
+            videoGrid.appendChild(fragment);
 
             updateControlState();
             videoCount.textContent = `已选择 ${videos.length} 个视频（+${files.length} 新增）`;
-        }
-
-        function renderAllCards() {
-            emptyState.style.display = 'none';
-            videoGrid.replaceChildren();
-            videos.forEach((v, index) => {
-                const card = createVideoCard(v.file || v, index, v.url);
-                videoGrid.appendChild(card);
-            });
-            updateVideoCount();
-            updateControlState();
         }
 
         fileInput.addEventListener('change', function(e) {
@@ -742,36 +732,52 @@
             speedBar.value = prevSpeed * 100;
             videos[index].speedDisplay.textContent = prevSpeed + 'x';
 
-            video.addEventListener('loadedmetadata', () => updateTimeDisplay(index));
-            video.addEventListener('error', function() {
+            video._onMeta = () => updateTimeDisplay(index);
+            video._onErr = () => {
                 const name = card.querySelector('.video-name');
                 name.textContent = `⚠ 无法播放: ${displayName}`;
                 name.style.color = '#e74c3c';
-            });
-            video.addEventListener('timeupdate', function() {
-                progressBar.value = video.duration ? (video.currentTime / video.duration) * 100 : 0;
-                updateTimeDisplay(index);
-            });
-            video.addEventListener('progress', function() {
-                updateProgressBar(progressBar, video);
-            });
-            video.addEventListener('ended', function() {
-                if (!video.loop) updatePlayButton(videos[index], false);
-            });
+            };
+            video._onTime = () => {
+                if (video._rafTime) return;
+                video._rafTime = requestAnimationFrame(() => {
+                    video._rafTime = 0;
+                    progressBar.value = video.duration ? (video.currentTime / video.duration) * 100 : 0;
+                    updateTimeDisplay(index);
+                });
+            };
+            video._onProg = () => {
+                if (video._rafProg) return;
+                video._rafProg = requestAnimationFrame(() => {
+                    video._rafProg = 0;
+                    updateProgressBar(progressBar, video);
+                });
+            };
+            video._onEnd = () => { if (!video.loop) updatePlayButton(videos[index], false); };
 
-            progressBar.addEventListener('input', function() {
+            video.addEventListener('loadedmetadata', video._onMeta);
+            video.addEventListener('error', video._onErr);
+            video.addEventListener('timeupdate', video._onTime);
+            video.addEventListener('progress', video._onProg);
+            video.addEventListener('ended', video._onEnd);
+
+            progressBar._onInput = () => {
                 if (video.duration) video.currentTime = (progressBar.value / 100) * video.duration;
-            });
-            volumeBar.addEventListener('input', function() {
+            };
+            volumeBar._onInput = () => {
                 video.volume = volumeBar.value / 100;
                 setMuted(index, video.volume === 0);
-            });
-            speedBar.addEventListener('input', function() {
+            };
+            speedBar._onInput = () => {
                 const speed = speedBar.value / 100;
                 video.playbackRate = speed;
                 videos[index].speed = speed;
                 videos[index].speedDisplay.textContent = speed.toFixed(2).replace(/\.?0+$/, '') + 'x';
-            });
+            };
+
+            progressBar.addEventListener('input', progressBar._onInput);
+            volumeBar.addEventListener('input', volumeBar._onInput);
+            speedBar.addEventListener('input', speedBar._onInput);
 
             return card;
         }
@@ -799,10 +805,16 @@
                 video.removeEventListener('timeupdate', video._onTime);
                 video.removeEventListener('progress', video._onProg);
                 video.removeEventListener('ended', video._onEnd);
+                if (video._rafTime) cancelAnimationFrame(video._rafTime);
+                if (video._rafProg) cancelAnimationFrame(video._rafProg);
 
                 const progressBar = card.querySelector(`[id^="progress-"]`);
                 const volumeBar = card.querySelector(`[id^="volume-"]`);
                 const speedBar = card.querySelector(`[id^="speedBar-"]`);
+
+                progressBar.removeEventListener('input', progressBar._onInput);
+                volumeBar.removeEventListener('input', volumeBar._onInput);
+                speedBar.removeEventListener('input', speedBar._onInput);
 
                 video._onMeta = () => updateTimeDisplay(i);
                 video._onErr = () => {
@@ -811,10 +823,20 @@
                     name.style.color = '#e74c3c';
                 };
                 video._onTime = () => {
-                    progressBar.value = video.duration ? (video.currentTime / video.duration) * 100 : 0;
-                    updateTimeDisplay(i);
+                    if (video._rafTime) return;
+                    video._rafTime = requestAnimationFrame(() => {
+                        video._rafTime = 0;
+                        progressBar.value = video.duration ? (video.currentTime / video.duration) * 100 : 0;
+                        updateTimeDisplay(i);
+                    });
                 };
-                video._onProg = () => updateProgressBar(progressBar, video);
+                video._onProg = () => {
+                    if (video._rafProg) return;
+                    video._rafProg = requestAnimationFrame(() => {
+                        video._rafProg = 0;
+                        updateProgressBar(progressBar, video);
+                    });
+                };
                 video._onEnd = () => { if (!video.loop) updatePlayButton(videos[i], false); };
 
                 video.addEventListener('loadedmetadata', video._onMeta);
@@ -823,35 +845,33 @@
                 video.addEventListener('progress', video._onProg);
                 video.addEventListener('ended', video._onEnd);
 
-                const newProgress = progressBar.cloneNode(true);
-                progressBar.replaceWith(newProgress);
-                newProgress.addEventListener('input', () => {
-                    if (video.duration) video.currentTime = (newProgress.value / 100) * video.duration;
-                });
-
-                const newVolume = volumeBar.cloneNode(true);
-                volumeBar.replaceWith(newVolume);
-                newVolume.addEventListener('input', () => {
-                    video.volume = newVolume.value / 100;
+                progressBar._onInput = () => {
+                    if (video.duration) video.currentTime = (progressBar.value / 100) * video.duration;
+                };
+                volumeBar._onInput = () => {
+                    video.volume = volumeBar.value / 100;
                     setMuted(i, video.volume === 0);
-                });
-
-                const newSpeed = speedBar.cloneNode(true);
-                speedBar.replaceWith(newSpeed);
-                newSpeed.addEventListener('input', () => {
-                    const speed = newSpeed.value / 100;
+                };
+                speedBar._onInput = () => {
+                    const speed = speedBar.value / 100;
                     video.playbackRate = speed;
                     videos[i].speed = speed;
                     videos[i].speedDisplay.textContent = speed.toFixed(2).replace(/\.?0+$/, '') + 'x';
-                });
+                };
+
+                progressBar.addEventListener('input', progressBar._onInput);
+                volumeBar.addEventListener('input', volumeBar._onInput);
+                speedBar.addEventListener('input', speedBar._onInput);
             });
         }
 
         function removeVideo(index) {
             const v = videos[index];
             v.element.pause();
+            if (v.element._rafTime) cancelAnimationFrame(v.element._rafTime);
+            if (v.element._rafProg) cancelAnimationFrame(v.element._rafProg);
             if (v.url) URL.revokeObjectURL(v.url);
-            const card = videoGrid.children[index];
+            const card = videoGrid.querySelector(`.video-card[data-index="${index}"]`);
             if (card) card.remove();
             videos.splice(index, 1);
             if (videos.length === 0) {
@@ -881,11 +901,17 @@
 
         function setMuted(index, muted) {
             const v = videos[index];
-            if (!muted && v.element.volume === 0) {
-                v.element.volume = 1;
-                v.volumeBar.value = 100;
+            if (muted) {
+                if (v.element.volume > 0) v.lastVolume = v.element.volume;
+                v.element.muted = true;
+            } else {
+                v.element.muted = false;
+                if (v.element.volume === 0) {
+                    const restore = v.lastVolume || 1;
+                    v.element.volume = restore;
+                    v.volumeBar.value = Math.round(restore * 100);
+                }
             }
-            v.element.muted = muted;
             updateMuteButton(v);
         }
 
@@ -965,7 +991,6 @@
         clearAllBtn.addEventListener('click', clearVideos);
         loopBtn.addEventListener('click', toggleLoop);
 
-        let clickTimer = null;
         videoGrid.addEventListener('click', function(e) {
             const btn = e.target.closest('[data-index]');
             if (!btn) return;
@@ -986,16 +1011,16 @@
                 return;
             }
             if (e.target.closest('.video-wrapper') && e.target.tagName === 'VIDEO') {
-                if (clickTimer) {
-                    clearTimeout(clickTimer);
-                    clickTimer = null;
-                    toggleFullscreen(videos[index].element);
-                } else {
-                    clickTimer = setTimeout(() => {
-                        clickTimer = null;
-                        togglePlay(index);
-                    }, 250);
-                }
+                togglePlay(index);
+            }
+        });
+
+        videoGrid.addEventListener('dblclick', function(e) {
+            const wrapper = e.target.closest('.video-wrapper');
+            if (!wrapper || e.target.tagName !== 'VIDEO') return;
+            const index = parseInt(wrapper.dataset.index);
+            if (!isNaN(index) && videos[index]) {
+                toggleFullscreen(videos[index].element);
             }
         });
 
