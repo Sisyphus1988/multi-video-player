@@ -1,6 +1,19 @@
 # 起居注
 
-## 2026-05-08 监国模式战果
+## 2026-05-08 监国模式战果（第二轮深度审查修复）
+
+- 核心目标：深度审查后修复 6 项问题（提交 `55eb08c`）。
+- 已完成：`reIndexCards` 事件监听器正确移除 — `createVideoCard` 中将监听器赋值给 `video._onMeta` 等属性，reIndexCards 通过 stored references 移除旧监听器再绑定新的，不再泄漏。
+- 已完成：`removeVideo` 改用 `querySelector(.video-card[data-index])` 精确定位卡片，不再依赖 children 顺序。
+- 已完成：单击视频直接播放/暂停，双击进入全屏，去掉 250ms 延迟，消除全局 clickTimer 状态冲突。
+- 已完成：取消静音时恢复上次音量（lastVolume），不再强制为 1。
+- 已完成：删除未使用的 `renderAllCards` 死代码；`escapeHtml` 补充单引号转义。
+- 已完成：`timeupdate`/`progress` 事件用 `requestAnimationFrame` 节流，减少高频 DOM 操作。
+- 已完成：`loadVideoFiles` 用 `DocumentFragment` 批量插入，减少重排。
+- 验证闭环：JS 语法解析通过；`git diff --check` 通过；工作区干净。
+- 遗留暗雷：rAF 节流需在浏览器中验证进度条/时间显示是否仍然流畅。
+
+## 2026-05-08 监国模式战果（第一轮）
 
 ### 第一轮：功能扩展（提交 `01e8e42`）
 
