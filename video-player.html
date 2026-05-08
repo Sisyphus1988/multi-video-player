@@ -431,12 +431,105 @@
             border-radius: 3px;
         }
 
+        .toast-container {
+            position: fixed;
+            top: 80px;
+            right: 24px;
+            z-index: 300;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            pointer-events: none;
+        }
+
+        .toast {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            color: #fff;
+            background: #2c3e50;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            opacity: 0;
+            transform: translateX(40px);
+            animation: toastIn 0.3s forwards;
+        }
+
+        .toast.success { background: #27ae60; }
+        .toast.error { background: #e74c3c; }
+        .toast.warning { background: #f39c12; }
+
+        @keyframes toastIn {
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        @keyframes toastOut {
+            to { opacity: 0; transform: translateX(40px); }
+        }
+
+        .speed-preset {
+            padding: 2px 6px;
+            border: none;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .speed-preset:hover { background: #f39c12; }
+        .speed-preset.active { background: #f39c12; }
+
+        .video-meta {
+            font-size: 11px;
+            opacity: 0.5;
+            margin-top: 4px;
+        }
+
+        .progress-tooltip {
+            position: absolute;
+            bottom: 100%;
+            left: 0;
+            padding: 3px 8px;
+            background: #2c3e50;
+            color: #fff;
+            font-size: 12px;
+            border-radius: 4px;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+            transform: translateX(-50%);
+            margin-bottom: 6px;
+        }
+
+        .progress-bar { position: relative; }
+        .progress-bar:hover .progress-tooltip { opacity: 1; }
+
+        .search-input {
+            padding: 8px 14px;
+            border: 1px solid #0f3460;
+            border-radius: 6px;
+            background: #1a1a2e;
+            color: #fff;
+            font-size: 14px;
+            outline: none;
+            width: 200px;
+            transition: border-color 0.2s;
+        }
+
+        .search-input:focus { border-color: #3498db; }
+        .search-input::placeholder { color: rgba(255,255,255,0.3); }
+        .video-card.hidden { display: none; }
+
     </style>
 </head>
 <body>
     <div class="drop-overlay" aria-hidden="true">
         <div class="drop-message">拖入视频文件或文件夹</div>
     </div>
+
+    <div class="toast-container" id="toastContainer"></div>
 
     <div class="toolbar">
         <div class="file-input-wrapper">
@@ -453,6 +546,7 @@
         <button class="btn btn-primary" id="unmuteAllBtn" type="button" disabled>🔊 取消静音</button>
         <button class="btn btn-primary" id="clearAllBtn" type="button" disabled>🗑️ 清空列表</button>
         <button class="btn btn-primary loop-btn" id="loopBtn" type="button" disabled>🔁 循环</button>
+        <input type="text" class="search-input" id="searchInput" placeholder="🔍 搜索视频..." aria-label="搜索视频">
         <span class="video-count" id="videoCount" aria-live="polite">已选择 0 个视频</span>
     </div>
 
@@ -481,6 +575,9 @@
         const loopBtn = document.getElementById('loopBtn');
 
         const ICONS = { play: '▶', pause: '⏸', muted: '🔇', unmuted: '🔊' };
+        const SPEED_PRESETS = [0.5, 1, 1.5, 2];
+        const toastContainer = document.getElementById('toastContainer');
+        const searchInput = document.getElementById('searchInput');
         const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'ogv', 'ogg', 'mov', 'm4v', 'mkv', 'avi', 'wmv', 'flv', 'ts', 'm2ts', '3gp']);
         const bulkActionButtons = [playAllBtn, pauseAllBtn, muteAllBtn, unmuteAllBtn, clearAllBtn, loopBtn];
         let videos = [];
@@ -495,6 +592,40 @@
                 if (v.element) v.element.pause();
                 if (v.url) URL.revokeObjectURL(v.url);
             });
+        }
+
+        function showToast(message, type = '') {
+            const toast = document.createElement('div');
+            toast.className = 'toast' + (type ? ' ' + type : '');
+            toast.textContent = message;
+            toastContainer.appendChild(toast);
+            setTimeout(() => {
+                toast.style.animation = 'toastOut 0.3s forwards';
+                toast.addEventListener('animationend', () => toast.remove());
+            }, 2500);
+        }
+
+        function filterVideos() {
+            const q = searchInput.value.trim().toLowerCase();
+            const cards = videoGrid.querySelectorAll('.video-card');
+            let visible = 0;
+            cards.forEach(card => {
+                const index = parseInt(card.dataset.index);
+                const name = videos[index] ? videos[index].name.toLowerCase() : '';
+                const match = !q || name.includes(q);
+                card.classList.toggle('hidden', !match);
+                if (match) visible++;
+            });
+            videoCount.textContent = q ? `搜索到 ${visible} / ${videos.length} 个视频` : `已选择 ${videos.length} 个视频`;
+        }
+
+        function getFocusedVideoIndex() {
+            const active = document.activeElement;
+            if (active) {
+                const card = active.closest('.video-card');
+                if (card) return parseInt(card.dataset.index);
+            }
+            return videos.length > 0 ? 0 : -1;
         }
 
         function showEmptyState() {
@@ -677,6 +808,9 @@
             const displayName = getDisplayName(file);
             const safeName = escapeHtml(displayName);
             const videoId = `video-${index}`;
+            const presetsHtml = SPEED_PRESETS.map(s =>
+                `<button type="button" class="speed-preset" data-speed="${s}" data-index="${index}">${s}x</button>`
+            ).join('');
 
             card.innerHTML = `
                 <div class="video-wrapper" data-index="${index}">
@@ -684,7 +818,9 @@
                 </div>
                 <div class="video-controls">
                     <div class="video-name" title="${safeName}">${safeName}</div>
+                    <div class="video-meta" id="meta-${index}"></div>
                     <div class="progress-bar">
+                        <div class="progress-tooltip" id="tooltip-${index}">0:00</div>
                         <input type="range" min="0" max="100" value="0" id="progress-${index}" aria-label="播放进度：${safeName}">
                     </div>
                     <div class="control-buttons">
@@ -696,6 +832,7 @@
                         <div class="speed-control">
                             <span id="speed-${index}">1x</span>
                             <input type="range" min="25" max="400" value="100" id="speedBar-${index}" aria-label="倍速：${safeName}">
+                            ${presetsHtml}
                         </div>
                         <div class="volume-control">
                             <span>🔈</span>
@@ -710,6 +847,8 @@
             const progressBar = card.querySelector(`#progress-${index}`);
             const volumeBar = card.querySelector(`#volume-${index}`);
             const speedBar = card.querySelector(`#speedBar-${index}`);
+            const tooltip = card.querySelector(`#tooltip-${index}`);
+            const metaDisplay = card.querySelector(`#meta-${index}`);
 
             const prevSpeed = videos[index] ? videos[index].speed : 1;
             videos[index] = {
@@ -725,18 +864,34 @@
                 name: displayName,
                 url,
                 file,
-                speed: prevSpeed
+                speed: prevSpeed,
+                lastVolume: videos[index] ? videos[index].lastVolume : 1
             };
 
             video.playbackRate = prevSpeed;
             speedBar.value = prevSpeed * 100;
             videos[index].speedDisplay.textContent = prevSpeed + 'x';
 
-            video._onMeta = () => updateTimeDisplay(index);
+            video._onMeta = () => {
+                updateTimeDisplay(index);
+                const w = video.videoWidth;
+                const h = video.videoHeight;
+                const size = file.size ? (file.size / 1048576).toFixed(1) + ' MB' : '';
+                if (w && h) metaDisplay.textContent = `${w}×${h}${size ? ' · ' + size : ''}`;
+                else if (size) metaDisplay.textContent = size;
+                try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w || 320;
+                    canvas.height = h || 180;
+                    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+                    video.poster = canvas.toDataURL('image/jpeg', 0.6);
+                } catch (_) {}
+            };
             video._onErr = () => {
                 const name = card.querySelector('.video-name');
                 name.textContent = `⚠ 无法播放: ${displayName}`;
                 name.style.color = '#e74c3c';
+                showToast(`无法播放: ${displayName}`, 'error');
             };
             video._onTime = () => {
                 if (video._rafTime) return;
@@ -753,7 +908,14 @@
                     updateProgressBar(progressBar, video);
                 });
             };
-            video._onEnd = () => { if (!video.loop) updatePlayButton(videos[index], false); };
+            video._onEnd = () => {
+                if (video.loop) return;
+                updatePlayButton(videos[index], false);
+                if (index + 1 < videos.length) {
+                    setPlaying(index + 1, true);
+                    showToast(`正在播放: ${videos[index + 1].name}`);
+                }
+            };
 
             video.addEventListener('loadedmetadata', video._onMeta);
             video.addEventListener('error', video._onErr);
@@ -773,11 +935,34 @@
                 video.playbackRate = speed;
                 videos[index].speed = speed;
                 videos[index].speedDisplay.textContent = speed.toFixed(2).replace(/\.?0+$/, '') + 'x';
+                card.querySelectorAll('.speed-preset').forEach(b => {
+                    b.classList.toggle('active', Math.abs(parseFloat(b.dataset.speed) - speed) < 0.01);
+                });
             };
 
             progressBar.addEventListener('input', progressBar._onInput);
             volumeBar.addEventListener('input', volumeBar._onInput);
             speedBar.addEventListener('input', speedBar._onInput);
+
+            progressBar.addEventListener('mousemove', function(e) {
+                if (!video.duration) return;
+                const rect = progressBar.getBoundingClientRect();
+                const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                tooltip.textContent = formatTime(pct * video.duration);
+                tooltip.style.left = (pct * 100) + '%';
+            });
+
+            card.querySelectorAll('.speed-preset').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const speed = parseFloat(this.dataset.speed);
+                    speedBar.value = speed * 100;
+                    video.playbackRate = speed;
+                    videos[index].speed = speed;
+                    videos[index].speedDisplay.textContent = speed + 'x';
+                    card.querySelectorAll('.speed-preset').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                });
+            });
 
             return card;
         }
@@ -797,8 +982,7 @@
             cards.forEach((card, i) => {
                 card.dataset.index = i;
                 const video = card.querySelector('video');
-                const btns = card.querySelectorAll('[data-index]');
-                btns.forEach(b => b.dataset.index = i);
+                card.querySelectorAll('[data-index]').forEach(b => b.dataset.index = i);
 
                 video.removeEventListener('loadedmetadata', video._onMeta);
                 video.removeEventListener('error', video._onErr);
@@ -811,16 +995,30 @@
                 const progressBar = card.querySelector(`[id^="progress-"]`);
                 const volumeBar = card.querySelector(`[id^="volume-"]`);
                 const speedBar = card.querySelector(`[id^="speedBar-"]`);
+                const tooltip = card.querySelector(`[id^="tooltip-"]`);
+                const metaDisplay = card.querySelector(`[id^="meta-"]`);
 
                 progressBar.removeEventListener('input', progressBar._onInput);
                 volumeBar.removeEventListener('input', volumeBar._onInput);
                 speedBar.removeEventListener('input', speedBar._onInput);
+                if (progressBar._onMove) progressBar.removeEventListener('mousemove', progressBar._onMove);
+                card.querySelectorAll('.speed-preset').forEach(b => {
+                    if (b._onClick) b.removeEventListener('click', b._onClick);
+                });
 
-                video._onMeta = () => updateTimeDisplay(i);
+                video._onMeta = () => {
+                    updateTimeDisplay(i);
+                    const w = video.videoWidth, h = video.videoHeight;
+                    const file = videos[i].file;
+                    const size = file && file.size ? (file.size / 1048576).toFixed(1) + ' MB' : '';
+                    if (w && h && metaDisplay) metaDisplay.textContent = `${w}×${h}${size ? ' · ' + size : ''}`;
+                    else if (size && metaDisplay) metaDisplay.textContent = size;
+                };
                 video._onErr = () => {
                     const name = card.querySelector('.video-name');
                     name.textContent = `⚠ 无法播放: ${videos[i].name}`;
                     name.style.color = '#e74c3c';
+                    showToast(`无法播放: ${videos[i].name}`, 'error');
                 };
                 video._onTime = () => {
                     if (video._rafTime) return;
@@ -837,7 +1035,14 @@
                         updateProgressBar(progressBar, video);
                     });
                 };
-                video._onEnd = () => { if (!video.loop) updatePlayButton(videos[i], false); };
+                video._onEnd = () => {
+                    if (video.loop) return;
+                    updatePlayButton(videos[i], false);
+                    if (i + 1 < videos.length) {
+                        setPlaying(i + 1, true);
+                        showToast(`正在播放: ${videos[i + 1].name}`);
+                    }
+                };
 
                 video.addEventListener('loadedmetadata', video._onMeta);
                 video.addEventListener('error', video._onErr);
@@ -857,11 +1062,36 @@
                     video.playbackRate = speed;
                     videos[i].speed = speed;
                     videos[i].speedDisplay.textContent = speed.toFixed(2).replace(/\.?0+$/, '') + 'x';
+                    card.querySelectorAll('.speed-preset').forEach(b => {
+                        b.classList.toggle('active', Math.abs(parseFloat(b.dataset.speed) - speed) < 0.01);
+                    });
                 };
 
                 progressBar.addEventListener('input', progressBar._onInput);
                 volumeBar.addEventListener('input', volumeBar._onInput);
                 speedBar.addEventListener('input', speedBar._onInput);
+
+                progressBar._onMove = function(e) {
+                    if (!video.duration) return;
+                    const rect = progressBar.getBoundingClientRect();
+                    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                    tooltip.textContent = formatTime(pct * video.duration);
+                    tooltip.style.left = (pct * 100) + '%';
+                };
+                progressBar.addEventListener('mousemove', progressBar._onMove);
+
+                card.querySelectorAll('.speed-preset').forEach(btn => {
+                    btn._onClick = function() {
+                        const speed = parseFloat(this.dataset.speed);
+                        speedBar.value = speed * 100;
+                        video.playbackRate = speed;
+                        videos[i].speed = speed;
+                        videos[i].speedDisplay.textContent = speed + 'x';
+                        card.querySelectorAll('.speed-preset').forEach(b => b.classList.remove('active'));
+                        this.classList.add('active');
+                    };
+                    btn.addEventListener('click', btn._onClick);
+                });
             });
         }
 
@@ -991,6 +1221,63 @@
         clearAllBtn.addEventListener('click', clearVideos);
         loopBtn.addEventListener('click', toggleLoop);
 
+        searchInput.addEventListener('input', filterVideos);
+
+        document.addEventListener('keydown', function(e) {
+            if (e.target.tagName === 'INPUT' && e.target !== searchInput) return;
+            if (e.target === searchInput && e.key !== 'Escape') return;
+
+            const index = getFocusedVideoIndex();
+            if (index < 0) return;
+            const v = videos[index];
+            if (!v || !v.element) return;
+
+            switch (e.key) {
+                case ' ':
+                    e.preventDefault();
+                    togglePlay(index);
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    v.element.currentTime = Math.min(v.element.duration || 0, v.element.currentTime + 5);
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    v.element.currentTime = Math.max(0, v.element.currentTime - 5);
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    v.element.volume = Math.min(1, v.element.volume + 0.1);
+                    v.volumeBar.value = Math.round(v.element.volume * 100);
+                    setMuted(index, false);
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    v.element.volume = Math.max(0, v.element.volume - 0.1);
+                    v.volumeBar.value = Math.round(v.element.volume * 100);
+                    if (v.element.volume === 0) setMuted(index, true);
+                    break;
+                case 'm':
+                case 'M':
+                    toggleMute(index);
+                    break;
+                case 'f':
+                case 'F':
+                    toggleFullscreen(v.element);
+                    break;
+                case 'Delete':
+                    removeVideo(index);
+                    break;
+                case 'Escape':
+                    if (document.activeElement === searchInput) {
+                        searchInput.value = '';
+                        filterVideos();
+                        searchInput.blur();
+                    }
+                    break;
+            }
+        });
+
         videoGrid.addEventListener('click', function(e) {
             const btn = e.target.closest('[data-index]');
             if (!btn) return;
@@ -1006,7 +1293,11 @@
                 if (document.pictureInPictureElement) {
                     document.exitPictureInPicture().catch(() => {});
                 } else {
-                    v.element.requestPictureInPicture().catch(() => {});
+                    v.element.requestPictureInPicture().then(() => {
+                        showToast('画中画已开启', 'success');
+                    }).catch(() => {
+                        showToast('画中画不可用', 'warning');
+                    });
                 }
                 return;
             }
