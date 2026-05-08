@@ -1,5 +1,18 @@
 # 起居注
 
+## 2026-05-08 监国模式战果（第四轮重构修复，提交 `7aa1550`）
+
+- 核心重构：提取 `bindVideoEvents` / `unbindVideoEvents` 公共函数，消除 `createVideoCard` 与 `reIndexCards` 约 80 行重复代码。净减 50 行。
+- 已完成：单击/双击冲突修复 — click 200ms 延迟执行播放，dblclick 取消延迟直接全屏。
+- 已完成：进度条拖动不再跳动 — 添加 `_seeking` 标志，mousedown/mouseup 控制，timeupdate 跳过。
+- 已完成：顺序播放越界保护 — 检查 `videos[next].element` 非空再播放。
+- 已完成：列表循环 — 最后一个视频结束后自动回到第一个。
+- 已完成：mousemove 事件正确赋值给 `progressBar._onMove`，reIndexCards 可正确解绑。
+- 已完成：Delete 后聚焦相邻卡片；搜索状态删除后调用 `filterVideos` 而非 `updateVideoCount`。
+- 已完成：空过滤恢复计数；`getFocusedVideoIndex` 无焦点返回 -1。
+- 已完成：reIndexCards 用精确 ID 选择器 `#progress-${i}` 替代 `[id^="progress-"]` 前缀匹配。
+- 验证闭环：JS 语法解析通过；代码净减 50 行；工作区干净。
+
 ## 2026-05-08 监国模式战果（第三轮功能扩展，提交 `802f76f`）
 
 - 已完成：键盘快捷键 — 空格播放/暂停、←→ 快进快退5秒、↑↓ 调节音量、M 静音、F 全屏、Delete 删除、Esc 清除搜索。
