@@ -625,7 +625,7 @@
                 const card = active.closest('.video-card');
                 if (card) return parseInt(card.dataset.index);
             }
-            return videos.length > 0 ? 0 : -1;
+            return -1;
         }
 
         function showEmptyState() {
@@ -673,7 +673,7 @@
             }
 
             if (files.length === 0) {
-                videoCount.textContent = '未找到可播放视频';
+                videoCount.textContent = videos.length > 0 ? `已选择 ${videos.length} 个视频` : '未找到可播放视频';
                 return;
             }
 
@@ -872,17 +872,24 @@
             speedBar.value = prevSpeed * 100;
             videos[index].speedDisplay.textContent = prevSpeed + 'x';
 
+            bindVideoEvents(video, card, index, progressBar, volumeBar, speedBar, tooltip, metaDisplay);
+
+            return card;
+        }
+
+        function bindVideoEvents(video, card, index, progressBar, volumeBar, speedBar, tooltip, metaDisplay) {
+            const displayName = videos[index].name;
+
             video._onMeta = () => {
                 updateTimeDisplay(index);
-                const w = video.videoWidth;
-                const h = video.videoHeight;
-                const size = file.size ? (file.size / 1048576).toFixed(1) + ' MB' : '';
-                if (w && h) metaDisplay.textContent = `${w}×${h}${size ? ' · ' + size : ''}`;
-                else if (size) metaDisplay.textContent = size;
+                const w = video.videoWidth, h = video.videoHeight;
+                const file = videos[index].file;
+                const size = file && file.size ? (file.size / 1048576).toFixed(1) + ' MB' : '';
+                if (w && h && metaDisplay) metaDisplay.textContent = `${w}×${h}${size ? ' · ' + size : ''}`;
+                else if (size && metaDisplay) metaDisplay.textContent = size;
                 try {
                     const canvas = document.createElement('canvas');
-                    canvas.width = w || 320;
-                    canvas.height = h || 180;
+                    canvas.width = w || 320; canvas.height = h || 180;
                     canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
                     video.poster = canvas.toDataURL('image/jpeg', 0.6);
                 } catch (_) {}
@@ -894,7 +901,7 @@
                 showToast(`无法播放: ${displayName}`, 'error');
             };
             video._onTime = () => {
-                if (video._rafTime) return;
+                if (video._seeking || video._rafTime) return;
                 video._rafTime = requestAnimationFrame(() => {
                     video._rafTime = 0;
                     progressBar.value = video.duration ? (video.currentTime / video.duration) * 100 : 0;
@@ -911,9 +918,10 @@
             video._onEnd = () => {
                 if (video.loop) return;
                 updatePlayButton(videos[index], false);
-                if (index + 1 < videos.length) {
-                    setPlaying(index + 1, true);
-                    showToast(`正在播放: ${videos[index + 1].name}`);
+                const next = index + 1 < videos.length ? index + 1 : 0;
+                if (next !== index && videos[next] && videos[next].element) {
+                    setPlaying(next, true);
+                    showToast(`正在播放: ${videos[next].name}`);
                 }
             };
 
@@ -926,10 +934,26 @@
             progressBar._onInput = () => {
                 if (video.duration) video.currentTime = (progressBar.value / 100) * video.duration;
             };
+            progressBar.addEventListener('input', progressBar._onInput);
+
+            progressBar.addEventListener('mousedown', () => { video._seeking = true; });
+            progressBar.addEventListener('mouseup', () => { video._seeking = false; });
+
+            progressBar._onMove = function(e) {
+                if (!video.duration) return;
+                const rect = progressBar.getBoundingClientRect();
+                const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                tooltip.textContent = formatTime(pct * video.duration);
+                tooltip.style.left = (pct * 100) + '%';
+            };
+            progressBar.addEventListener('mousemove', progressBar._onMove);
+
             volumeBar._onInput = () => {
                 video.volume = volumeBar.value / 100;
                 setMuted(index, video.volume === 0);
             };
+            volumeBar.addEventListener('input', volumeBar._onInput);
+
             speedBar._onInput = () => {
                 const speed = speedBar.value / 100;
                 video.playbackRate = speed;
@@ -939,21 +963,10 @@
                     b.classList.toggle('active', Math.abs(parseFloat(b.dataset.speed) - speed) < 0.01);
                 });
             };
-
-            progressBar.addEventListener('input', progressBar._onInput);
-            volumeBar.addEventListener('input', volumeBar._onInput);
             speedBar.addEventListener('input', speedBar._onInput);
 
-            progressBar.addEventListener('mousemove', function(e) {
-                if (!video.duration) return;
-                const rect = progressBar.getBoundingClientRect();
-                const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                tooltip.textContent = formatTime(pct * video.duration);
-                tooltip.style.left = (pct * 100) + '%';
-            });
-
             card.querySelectorAll('.speed-preset').forEach(btn => {
-                btn.addEventListener('click', function() {
+                btn._onClick = function() {
                     const speed = parseFloat(this.dataset.speed);
                     speedBar.value = speed * 100;
                     video.playbackRate = speed;
@@ -961,10 +974,27 @@
                     videos[index].speedDisplay.textContent = speed + 'x';
                     card.querySelectorAll('.speed-preset').forEach(b => b.classList.remove('active'));
                     this.classList.add('active');
-                });
+                };
+                btn.addEventListener('click', btn._onClick);
             });
+        }
 
-            return card;
+        function unbindVideoEvents(video, card, progressBar, volumeBar, speedBar) {
+            video.removeEventListener('loadedmetadata', video._onMeta);
+            video.removeEventListener('error', video._onErr);
+            video.removeEventListener('timeupdate', video._onTime);
+            video.removeEventListener('progress', video._onProg);
+            video.removeEventListener('ended', video._onEnd);
+            if (video._rafTime) cancelAnimationFrame(video._rafTime);
+            if (video._rafProg) cancelAnimationFrame(video._rafProg);
+
+            progressBar.removeEventListener('input', progressBar._onInput);
+            progressBar.removeEventListener('mousemove', progressBar._onMove);
+            volumeBar.removeEventListener('input', volumeBar._onInput);
+            speedBar.removeEventListener('input', speedBar._onInput);
+            card.querySelectorAll('.speed-preset').forEach(b => {
+                if (b._onClick) b.removeEventListener('click', b._onClick);
+            });
         }
 
         function updateProgressBar(progressBar, video) {
@@ -984,114 +1014,14 @@
                 const video = card.querySelector('video');
                 card.querySelectorAll('[data-index]').forEach(b => b.dataset.index = i);
 
-                video.removeEventListener('loadedmetadata', video._onMeta);
-                video.removeEventListener('error', video._onErr);
-                video.removeEventListener('timeupdate', video._onTime);
-                video.removeEventListener('progress', video._onProg);
-                video.removeEventListener('ended', video._onEnd);
-                if (video._rafTime) cancelAnimationFrame(video._rafTime);
-                if (video._rafProg) cancelAnimationFrame(video._rafProg);
+                const progressBar = card.querySelector(`#progress-${i}`);
+                const volumeBar = card.querySelector(`#volume-${i}`);
+                const speedBar = card.querySelector(`#speedBar-${i}`);
+                const tooltip = card.querySelector(`#tooltip-${i}`);
+                const metaDisplay = card.querySelector(`#meta-${i}`);
 
-                const progressBar = card.querySelector(`[id^="progress-"]`);
-                const volumeBar = card.querySelector(`[id^="volume-"]`);
-                const speedBar = card.querySelector(`[id^="speedBar-"]`);
-                const tooltip = card.querySelector(`[id^="tooltip-"]`);
-                const metaDisplay = card.querySelector(`[id^="meta-"]`);
-
-                progressBar.removeEventListener('input', progressBar._onInput);
-                volumeBar.removeEventListener('input', volumeBar._onInput);
-                speedBar.removeEventListener('input', speedBar._onInput);
-                if (progressBar._onMove) progressBar.removeEventListener('mousemove', progressBar._onMove);
-                card.querySelectorAll('.speed-preset').forEach(b => {
-                    if (b._onClick) b.removeEventListener('click', b._onClick);
-                });
-
-                video._onMeta = () => {
-                    updateTimeDisplay(i);
-                    const w = video.videoWidth, h = video.videoHeight;
-                    const file = videos[i].file;
-                    const size = file && file.size ? (file.size / 1048576).toFixed(1) + ' MB' : '';
-                    if (w && h && metaDisplay) metaDisplay.textContent = `${w}×${h}${size ? ' · ' + size : ''}`;
-                    else if (size && metaDisplay) metaDisplay.textContent = size;
-                };
-                video._onErr = () => {
-                    const name = card.querySelector('.video-name');
-                    name.textContent = `⚠ 无法播放: ${videos[i].name}`;
-                    name.style.color = '#e74c3c';
-                    showToast(`无法播放: ${videos[i].name}`, 'error');
-                };
-                video._onTime = () => {
-                    if (video._rafTime) return;
-                    video._rafTime = requestAnimationFrame(() => {
-                        video._rafTime = 0;
-                        progressBar.value = video.duration ? (video.currentTime / video.duration) * 100 : 0;
-                        updateTimeDisplay(i);
-                    });
-                };
-                video._onProg = () => {
-                    if (video._rafProg) return;
-                    video._rafProg = requestAnimationFrame(() => {
-                        video._rafProg = 0;
-                        updateProgressBar(progressBar, video);
-                    });
-                };
-                video._onEnd = () => {
-                    if (video.loop) return;
-                    updatePlayButton(videos[i], false);
-                    if (i + 1 < videos.length) {
-                        setPlaying(i + 1, true);
-                        showToast(`正在播放: ${videos[i + 1].name}`);
-                    }
-                };
-
-                video.addEventListener('loadedmetadata', video._onMeta);
-                video.addEventListener('error', video._onErr);
-                video.addEventListener('timeupdate', video._onTime);
-                video.addEventListener('progress', video._onProg);
-                video.addEventListener('ended', video._onEnd);
-
-                progressBar._onInput = () => {
-                    if (video.duration) video.currentTime = (progressBar.value / 100) * video.duration;
-                };
-                volumeBar._onInput = () => {
-                    video.volume = volumeBar.value / 100;
-                    setMuted(i, video.volume === 0);
-                };
-                speedBar._onInput = () => {
-                    const speed = speedBar.value / 100;
-                    video.playbackRate = speed;
-                    videos[i].speed = speed;
-                    videos[i].speedDisplay.textContent = speed.toFixed(2).replace(/\.?0+$/, '') + 'x';
-                    card.querySelectorAll('.speed-preset').forEach(b => {
-                        b.classList.toggle('active', Math.abs(parseFloat(b.dataset.speed) - speed) < 0.01);
-                    });
-                };
-
-                progressBar.addEventListener('input', progressBar._onInput);
-                volumeBar.addEventListener('input', volumeBar._onInput);
-                speedBar.addEventListener('input', speedBar._onInput);
-
-                progressBar._onMove = function(e) {
-                    if (!video.duration) return;
-                    const rect = progressBar.getBoundingClientRect();
-                    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                    tooltip.textContent = formatTime(pct * video.duration);
-                    tooltip.style.left = (pct * 100) + '%';
-                };
-                progressBar.addEventListener('mousemove', progressBar._onMove);
-
-                card.querySelectorAll('.speed-preset').forEach(btn => {
-                    btn._onClick = function() {
-                        const speed = parseFloat(this.dataset.speed);
-                        speedBar.value = speed * 100;
-                        video.playbackRate = speed;
-                        videos[i].speed = speed;
-                        videos[i].speedDisplay.textContent = speed + 'x';
-                        card.querySelectorAll('.speed-preset').forEach(b => b.classList.remove('active'));
-                        this.classList.add('active');
-                    };
-                    btn.addEventListener('click', btn._onClick);
-                });
+                unbindVideoEvents(video, card, progressBar, volumeBar, speedBar);
+                bindVideoEvents(video, card, i, progressBar, volumeBar, speedBar, tooltip, metaDisplay);
             });
         }
 
@@ -1108,8 +1038,15 @@
                 showEmptyState();
             } else {
                 reIndexCards();
+                const next = Math.min(index, videos.length - 1);
+                const nextCard = videoGrid.querySelector(`.video-card[data-index="${next}"]`);
+                if (nextCard) nextCard.focus({ preventScroll: true });
             }
-            updateVideoCount();
+            if (searchInput.value.trim()) {
+                filterVideos();
+            } else {
+                updateVideoCount();
+            }
             updateControlState();
         }
 
@@ -1228,9 +1165,8 @@
             if (e.target === searchInput && e.key !== 'Escape') return;
 
             const index = getFocusedVideoIndex();
-            if (index < 0) return;
+            if (index < 0 || !videos[index] || !videos[index].element) return;
             const v = videos[index];
-            if (!v || !v.element) return;
 
             switch (e.key) {
                 case ' ':
@@ -1302,13 +1238,27 @@
                 return;
             }
             if (e.target.closest('.video-wrapper') && e.target.tagName === 'VIDEO') {
-                togglePlay(index);
+                const card = e.target.closest('.video-card');
+                if (card._clickTimer) {
+                    clearTimeout(card._clickTimer);
+                    card._clickTimer = null;
+                } else {
+                    card._clickTimer = setTimeout(() => {
+                        card._clickTimer = null;
+                        togglePlay(index);
+                    }, 200);
+                }
             }
         });
 
         videoGrid.addEventListener('dblclick', function(e) {
             const wrapper = e.target.closest('.video-wrapper');
             if (!wrapper || e.target.tagName !== 'VIDEO') return;
+            const card = wrapper.closest('.video-card');
+            if (card._clickTimer) {
+                clearTimeout(card._clickTimer);
+                card._clickTimer = null;
+            }
             const index = parseInt(wrapper.dataset.index);
             if (!isNaN(index) && videos[index]) {
                 toggleFullscreen(videos[index].element);
