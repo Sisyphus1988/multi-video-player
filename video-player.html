@@ -158,6 +158,7 @@
             position: relative;
             background: #000;
             aspect-ratio: 16/9;
+            cursor: pointer;
         }
 
         .video-wrapper video {
@@ -196,12 +197,6 @@
             appearance: none;
             background: transparent;
             cursor: pointer;
-        }
-
-        .progress-bar input[type="range"]::-webkit-slider-runnable-track {
-            height: 6px;
-            background: #1a1a2e;
-            border-radius: 3px;
         }
 
         .progress-bar input[type="range"]::-webkit-slider-thumb {
@@ -307,6 +302,86 @@
             margin-bottom: 10px;
         }
 
+        .loop-btn.active {
+            background: #8e44ad;
+            color: #fff;
+        }
+
+        .delete-btn {
+            background: rgba(231, 76, 60, 0.15);
+            color: #e74c3c;
+        }
+
+        .delete-btn:hover {
+            background: #e74c3c;
+            color: #fff;
+        }
+
+        .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: 8px;
+            flex-shrink: 0;
+        }
+
+        .speed-control span {
+            font-size: 11px;
+            opacity: 0.7;
+            min-width: 32px;
+            text-align: center;
+        }
+
+        .speed-control input[type="range"] {
+            width: 60px;
+            height: 4px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: transparent;
+            cursor: pointer;
+        }
+
+        .speed-control input[type="range"]::-webkit-slider-runnable-track {
+            height: 4px;
+            background: #1a1a2e;
+            border-radius: 2px;
+        }
+
+        .speed-control input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 10px;
+            height: 10px;
+            background: #f39c12;
+            border-radius: 50%;
+            margin-top: -3px;
+            cursor: pointer;
+        }
+
+        .pip-btn {
+            background: #2c3e50;
+            color: #fff;
+        }
+
+        .pip-btn:hover {
+            background: #34495e;
+        }
+
+        .progress-bar input[type="range"]::-webkit-slider-runnable-track {
+            height: 6px;
+            background: linear-gradient(to right, #3498db var(--buffered, 0%), #1a1a2e var(--buffered, 0%));
+            border-radius: 3px;
+        }
+
+        .progress-bar:hover input[type="range"]::-webkit-slider-runnable-track {
+            height: 8px;
+        }
+
+        .progress-bar:hover input[type="range"]::-webkit-slider-thumb {
+            width: 16px;
+            height: 16px;
+            margin-top: -4px;
+        }
+
     </style>
 </head>
 <body>
@@ -328,6 +403,7 @@
         <button class="btn btn-danger" id="muteAllBtn" type="button" disabled>🔇 全部静音</button>
         <button class="btn btn-primary" id="unmuteAllBtn" type="button" disabled>🔊 取消静音</button>
         <button class="btn btn-primary" id="clearAllBtn" type="button" disabled>🗑️ 清空列表</button>
+        <button class="btn btn-primary loop-btn" id="loopBtn" type="button" disabled>🔁 循环</button>
         <span class="video-count" id="videoCount" aria-live="polite">已选择 0 个视频</span>
     </div>
 
@@ -353,10 +429,11 @@
         const muteAllBtn = document.getElementById('muteAllBtn');
         const unmuteAllBtn = document.getElementById('unmuteAllBtn');
         const clearAllBtn = document.getElementById('clearAllBtn');
+        const loopBtn = document.getElementById('loopBtn');
 
         const ICONS = { play: '▶', pause: '⏸', muted: '🔇', unmuted: '🔊' };
         const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'ogv', 'ogg', 'mov', 'm4v', 'mkv', 'avi', 'wmv', 'flv', 'ts', 'm2ts', '3gp']);
-        const bulkActionButtons = [playAllBtn, pauseAllBtn, muteAllBtn, unmuteAllBtn, clearAllBtn];
+        const bulkActionButtons = [playAllBtn, pauseAllBtn, muteAllBtn, unmuteAllBtn, clearAllBtn, loopBtn];
         let videos = [];
         let dragDepth = 0;
 
@@ -368,7 +445,7 @@
 
         function revokeAllUrls() {
             videos.forEach(v => {
-                v.element.pause();
+                if (v.element) v.element.pause();
                 if (v.url) URL.revokeObjectURL(v.url);
             });
         }
@@ -383,6 +460,8 @@
             videos = [];
             fileInput.value = '';
             folderInput.value = '';
+            loopBtn.classList.remove('active');
+            loopBtn.textContent = '🔁 循环';
             updateVideoCount();
             updateControlState();
             showEmptyState();
@@ -416,19 +495,38 @@
             }
 
             if (files.length === 0) {
-                clearVideos();
                 videoCount.textContent = '未找到可播放视频';
                 return;
             }
 
-            revokeAllUrls();
+            files.forEach(file => {
+                const url = URL.createObjectURL(file);
+                const displayName = getDisplayName(file);
+                videos.push({
+                    element: null,
+                    playBtn: null,
+                    muteBtn: null,
+                    volumeBar: null,
+                    timeDisplay: null,
+                    speedDisplay: null,
+                    pipBtn: null,
+                    name: displayName,
+                    url,
+                    file,
+                    speed: 1
+                });
+            });
+
+            renderAllCards();
+        }
+
+        function renderAllCards() {
             emptyState.style.display = 'none';
             videoGrid.replaceChildren();
-            videos = [];
 
-            files.forEach((file, index) => {
-                const videoCard = createVideoCard(file, index);
-                videoGrid.appendChild(videoCard);
+            videos.forEach((v, index) => {
+                const card = createVideoCard(v.file || v, index, v.url);
+                videoGrid.appendChild(card);
             });
 
             updateVideoCount();
@@ -531,17 +629,17 @@
             return files.flat().filter(Boolean);
         }
 
-        function createVideoCard(file, index) {
+        function createVideoCard(file, index, url) {
             const card = document.createElement('div');
             card.className = 'video-card';
 
-            const url = URL.createObjectURL(file);
+            url = url || URL.createObjectURL(file);
             const displayName = getDisplayName(file);
             const safeName = escapeHtml(displayName);
             const videoId = `video-${index}`;
 
             card.innerHTML = `
-                <div class="video-wrapper">
+                <div class="video-wrapper" data-index="${index}">
                     <video id="${videoId}" src="${url}" preload="metadata"></video>
                 </div>
                 <div class="video-controls">
@@ -552,7 +650,13 @@
                     <div class="control-buttons">
                         <button type="button" class="control-btn play-btn" data-index="${index}" aria-label="播放 ${safeName}" title="播放">${ICONS.play}</button>
                         <button type="button" class="control-btn mute-btn" data-index="${index}" aria-label="静音 ${safeName}" title="静音">${ICONS.unmuted}</button>
+                        <button type="button" class="control-btn pip-btn" data-index="${index}" aria-label="画中画 ${safeName}" title="画中画">📺</button>
+                        <button type="button" class="control-btn delete-btn" data-index="${index}" aria-label="删除 ${safeName}" title="删除">✕</button>
                         <span class="time-display" id="time-${index}">0:00 / 0:00</span>
+                        <div class="speed-control">
+                            <span id="speed-${index}">1x</span>
+                            <input type="range" min="25" max="400" value="100" id="speedBar-${index}" aria-label="倍速：${safeName}">
+                        </div>
                         <div class="volume-control">
                             <span>🔈</span>
                             <input type="range" min="0" max="100" value="100" id="volume-${index}" aria-label="音量：${safeName}">
@@ -565,19 +669,35 @@
             const video = card.querySelector('video');
             const playBtn = card.querySelector('.play-btn');
             const muteBtn = card.querySelector('.mute-btn');
+            const deleteBtn = card.querySelector('.delete-btn');
+            const pipBtn = card.querySelector('.pip-btn');
             const progressBar = card.querySelector(`#progress-${index}`);
             const volumeBar = card.querySelector(`#volume-${index}`);
             const timeDisplay = card.querySelector(`#time-${index}`);
+            const speedDisplay = card.querySelector(`#speed-${index}`);
+            const speedBar = card.querySelector(`#speedBar-${index}`);
+            const videoWrapper = card.querySelector('.video-wrapper');
 
-            videos.push({
+            const prevSpeed = videos[index] ? videos[index].speed : 1;
+            videos[index] = {
                 element: video,
                 playBtn,
                 muteBtn,
+                deleteBtn,
+                pipBtn,
                 volumeBar,
                 timeDisplay,
+                speedDisplay,
+                speedBar,
                 name: displayName,
-                url
-            });
+                url,
+                file,
+                speed: prevSpeed
+            };
+
+            video.playbackRate = prevSpeed;
+            speedBar.value = prevSpeed * 100;
+            speedDisplay.textContent = prevSpeed + 'x';
 
             video.addEventListener('loadedmetadata', () => updateTimeDisplay(index));
 
@@ -593,10 +713,50 @@
                 updateTimeDisplay(index);
             });
 
-            video.addEventListener('ended', () => updatePlayButton(videos[index], false));
+            video.addEventListener('progress', function() {
+                if (video.buffered.length > 0 && video.duration) {
+                    const buffered = (video.buffered.end(video.buffered.length - 1) / video.duration) * 100;
+                    progressBar.style.setProperty('--buffered', buffered + '%');
+                }
+            });
+
+            video.addEventListener('ended', function() {
+                if (!video.loop) {
+                    updatePlayButton(videos[index], false);
+                }
+            });
 
             playBtn.addEventListener('click', () => togglePlay(index));
             muteBtn.addEventListener('click', () => toggleMute(index));
+            deleteBtn.addEventListener('click', () => removeVideo(index));
+
+            pipBtn.addEventListener('click', async () => {
+                try {
+                    if (document.pictureInPictureElement) {
+                        await document.exitPictureInPicture();
+                    } else {
+                        await video.requestPictureInPicture();
+                    }
+                } catch (err) {
+                    console.warn('画中画不可用:', err);
+                }
+            });
+
+            let clickTimer = null;
+            videoWrapper.addEventListener('click', function(e) {
+                if (e.target === video) {
+                    if (clickTimer) {
+                        clearTimeout(clickTimer);
+                        clickTimer = null;
+                        toggleFullscreen(video);
+                    } else {
+                        clickTimer = setTimeout(() => {
+                            clickTimer = null;
+                            togglePlay(index);
+                        }, 250);
+                    }
+                }
+            });
 
             progressBar.addEventListener('input', function() {
                 if (video.duration) {
@@ -609,7 +769,38 @@
                 setMuted(index, video.volume === 0);
             });
 
+            speedBar.addEventListener('input', function() {
+                const speed = speedBar.value / 100;
+                video.playbackRate = speed;
+                videos[index].speed = speed;
+                speedDisplay.textContent = speed.toFixed(2).replace(/\.?0+$/, '') + 'x';
+            });
+
             return card;
+        }
+
+        function removeVideo(index) {
+            const v = videos[index];
+            v.element.pause();
+            if (v.url) URL.revokeObjectURL(v.url);
+            videos.splice(index, 1);
+            renderAllCards();
+        }
+
+        function toggleFullscreen(video) {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                video.requestFullscreen().catch(() => {});
+            }
+        }
+
+        function toggleLoop() {
+            const isLoop = loopBtn.classList.toggle('active');
+            videos.forEach(v => {
+                if (v.element) v.element.loop = isLoop;
+            });
+            loopBtn.textContent = isLoop ? '🔁 循环中' : '🔁 循环';
         }
 
         function setMuted(index, muted) {
@@ -694,6 +885,7 @@
         muteAllBtn.addEventListener('click', () => applyToAll(i => setMuted(i, true)));
         unmuteAllBtn.addEventListener('click', () => applyToAll(i => setMuted(i, false)));
         clearAllBtn.addEventListener('click', clearVideos);
+        loopBtn.addEventListener('click', toggleLoop);
 
         window.addEventListener('dragenter', function(e) {
             if (!isFileDrag(e)) return;
