@@ -1,4 +1,4 @@
-# Video Player
+# Multi Video Player
 
 A lightweight local multi-video player built as a single HTML file.
 
@@ -56,4 +56,4 @@ See [README_CN.md](./README_CN.md).
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Sisyphus1988/video-player&type=Date)](https://star-history.com/#Sisyphus1988/video-player&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=Sisyphus1988/multi-video-player&type=Date)](https://star-history.com/#Sisyphus1988/multi-video-player&Date)

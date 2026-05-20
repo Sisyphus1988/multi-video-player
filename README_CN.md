@@ -1,4 +1,4 @@
-# 本地视频多开播放器
+# Multi Video Player
 
 一个轻量的本地多视频播放器，当前以单个 `HTML` 文件形式提供。
 
@@ -52,4 +52,4 @@ README_CN.md
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Sisyphus1988/video-player&type=Date)](https://star-history.com/#Sisyphus1988/video-player&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=Sisyphus1988/multi-video-player&type=Date)](https://star-history.com/#Sisyphus1988/multi-video-player&Date)
