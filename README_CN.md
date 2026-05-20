@@ -27,7 +27,7 @@
 
 ## 使用方式
 
-1. 用 Chromium 内核浏览器打开 `video-player.html`
+1. 用 Chromium 内核浏览器打开 `multi-video-player.html`
 2. 点击选择本地视频文件，或直接选择文件夹
 3. 也可以把本地文件或文件夹直接拖进页面
 4. 可以单独控制每个视频，也可以使用顶部工具栏进行批量操作
@@ -41,7 +41,7 @@
 ## 项目结构
 
 ```text
-video-player.html
+multi-video-player.html
 README.md
 README_CN.md
 ```

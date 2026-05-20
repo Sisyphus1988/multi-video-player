@@ -27,7 +27,7 @@ It is designed for quickly opening, previewing, and controlling multiple local v
 
 ## Usage
 
-1. Open `video-player.html` in a Chromium-based browser.
+1. Open `multi-video-player.html` in a Chromium-based browser.
 2. Click to choose video files, or choose a folder.
 3. You can also drag local files or folders into the page.
 4. Control each video independently or use the toolbar for batch actions.
@@ -41,7 +41,7 @@ It is designed for quickly opening, previewing, and controlling multiple local v
 ## Project Structure
 
 ```text
-video-player.html
+multi-video-player.html
 README.md
 README_CN.md
 ```
