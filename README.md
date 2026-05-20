@@ -53,3 +53,7 @@ This project is currently a small personal utility and is being iterated as a li
 ## Chinese Documentation
 
 See [README_CN.md](./README_CN.md).
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Sisyphus1988/video-player&type=Date)](https://star-history.com/#Sisyphus1988/video-player&Date)

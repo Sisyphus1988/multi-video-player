@@ -49,3 +49,7 @@ README_CN.md
 ## 当前状态
 
 这个项目目前更偏向一个个人实用工具，定位是轻量、前端单文件、随开随用。
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Sisyphus1988/video-player&type=Date)](https://star-history.com/#Sisyphus1988/video-player&Date)
